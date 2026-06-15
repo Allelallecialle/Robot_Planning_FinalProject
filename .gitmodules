@@ -1,0 +1,3 @@
+[submodule "loco_nav"]
+	path = loco_nav
+	url = https://github.com/idra-lab/loco_nav.git
