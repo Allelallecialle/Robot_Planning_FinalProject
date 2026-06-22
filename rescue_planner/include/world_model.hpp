@@ -1,10 +1,23 @@
 #pragma once
+#include <vector>
+#include <geometry_msgs/Polygon.h>
+#include <geometry_msgs/Pose.h>
 
-class WorldModel
-{
+class WorldModel{
 public:
 
-    int obstacles_count = 0;
-    int victims_count = 0;
-    int gates_count = 0;
+    struct Obstacle{
+        geometry_msgs::Polygon polygon;
+        double radius;
+    };
+
+    struct Victim{
+        double x;
+        double y;
+        double radius;
+    };
+
+    std::vector<Obstacle> obstacles;
+    std::vector<Victim> victims;
+    std::vector<geometry_msgs::Pose> gates;
 };
