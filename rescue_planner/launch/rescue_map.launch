@@ -1,0 +1,39 @@
+<!-- target_rescue.launch -->
+<launch>
+
+    <!-- Start Gazebo -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name"
+         value="$(find map_pkg)/worlds/empty.world"/>
+    </include>
+
+    <!-- Enable victims -->
+    <arg name="victims_activated" default="true"/>
+
+    <!-- Generate map -->
+    <include file="$(find map_pkg)/launch/spawn_map.launch">
+        <arg name="victims_activated"
+             value="$(arg victims_activated)"/>
+    </include>
+
+    <!-- Add robot limo0 -->
+    <arg name="robot_id" value="0"/>
+    <group ns="limo$(arg robot_id)">
+        <include file="$(find limo_description)/launch/upload.launch">
+            <arg name="robot_id" value="$(arg robot_id)"/>
+        </include>
+        <node
+            pkg="gazebo_ros"
+            type="spawn_model"
+            name="spawn_model"
+            args="-urdf
+                  -param robot_description
+                  -model limo$(arg robot_id)
+                  -robot_namespace limo$(arg robot_id)
+                  -x 0
+                  -y 0
+                  -z 1
+                  -Y 0"/>
+    </group>
+
+</launch>
