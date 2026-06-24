@@ -2,6 +2,7 @@
 #include <obstacles_msgs/ObstacleArrayMsg.h>
 #include <geometry_msgs/PoseArray.h>
 
+#include "collision_checker.hpp"
 #include "world_model.hpp"
 WorldModel world;
 
@@ -102,11 +103,41 @@ int main(int argc, char** argv){
         for(const auto& obs : world.obstacles)
         {
             ROS_INFO_STREAM(
-                "Obstacle points: "
+                "radius = "
+                << obs.radius
+                << " points = "
                 << obs.polygon.points.size()
             );
         }
 
+        ROS_INFO_STREAM(
+        "Point (100,100): "
+        << isPointValid(
+               100,
+               100,
+               world
+           )
+        );
+        double cx = 0;
+        double cy = 0;
+        for(const auto& obs : world.obstacles)
+        {
+            if(obs.polygon.points.size() == 1)
+            {
+                ROS_INFO_STREAM(
+                    "Cylinder center: "
+                    << obs.polygon.points[0].x
+                    << ", "
+                    << obs.polygon.points[0].y
+                );
+                cx = obs.polygon.points[0].x;
+                cy = obs.polygon.points[0].y;
+            }
+            break;
+        }
+        ROS_INFO_STREAM(
+        "Point center cylinder DEBUG: "
+        << isPointValid(cx, cy, world));
 
         rate.sleep();
     }

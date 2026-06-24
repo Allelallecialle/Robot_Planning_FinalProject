@@ -127,6 +127,7 @@ include_directories(include
 # )
 add_executable(map_receiver
     src/map_receiver.cpp
+    src/collision_checker.cpp
 )
 
 target_link_libraries(map_receiver
