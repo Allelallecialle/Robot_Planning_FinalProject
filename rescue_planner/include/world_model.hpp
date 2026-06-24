@@ -20,4 +20,5 @@ public:
     std::vector<Obstacle> obstacles;
     std::vector<Victim> victims;
     std::vector<geometry_msgs::Pose> gates;
+    geometry_msgs::Polygon borders;
 };

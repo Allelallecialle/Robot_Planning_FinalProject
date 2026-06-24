@@ -3,6 +3,8 @@
 #include <geometry_msgs/PoseArray.h>
 
 #include "collision_checker.hpp"
+#include "sampler.hpp"
+#include "rrt.hpp"
 #include "world_model.hpp"
 WorldModel world;
 
@@ -20,12 +22,6 @@ void obstacleCallback(
 
         world.obstacles.push_back(obstacle);
     }
-
-    ROS_INFO_STREAM(
-        "Stored "
-        << world.obstacles.size()
-        << " obstacles"
-    );
 }
 
 void victimCallback(
@@ -50,12 +46,17 @@ void gatesCallback(
     const geometry_msgs::PoseArray::ConstPtr& msg){
     world.gates = msg->poses;
 }
+void bordersCallback(
+    const geometry_msgs::Polygon::ConstPtr& msg){
+    world.borders = *msg;
+}
 
 
 int main(int argc, char** argv){
     ros::init(argc, argv, "map_receiver");
 
     ros::NodeHandle nh;
+    std::vector<RRTNode> tree;
 
     ros::Subscriber obstacle_sub =
     nh.subscribe(
@@ -78,6 +79,13 @@ int main(int argc, char** argv){
         gatesCallback
     );
 
+    ros::Subscriber borders_sub =
+    nh.subscribe(
+        "/map_borders",
+        1,
+        bordersCallback
+    );
+
     ROS_INFO("Map receiver started");
 
     ros::Rate rate(1);
@@ -85,59 +93,38 @@ int main(int argc, char** argv){
     while(ros::ok()){
         ros::spinOnce();
 
+        SamplePoint p = sampleRandomPoint(world);
         ROS_INFO_STREAM(
-            "Obstacles: " << world.obstacles.size()
-            << " | Victims: " << world.victims.size()
-            << " | Gates: " << world.gates.size()
+            "Sample: "
+            << p.x
+            << ", "
+            << p.y
         );
 
-        for(const auto& victim : world.victims){
-            ROS_INFO_STREAM(
-                "Victim at ("
-                << victim.x
-                << ", "
-                << victim.y
-                << ")"
-            );
-        }
-        for(const auto& obs : world.obstacles)
-        {
-            ROS_INFO_STREAM(
-                "radius = "
-                << obs.radius
-                << " points = "
-                << obs.polygon.points.size()
-            );
+        if(tree.empty()){
+            RRTNode root;
+            root.x = 0.0;
+            root.y = 0.0;
+            root.parent = -1;
+            tree.push_back(root);
+            ROS_INFO_STREAM("Root node created");
         }
 
+        //TODO: sostituire p (sample casuale) con rrt based choice del sample
+        int nearest = nearestNode(tree, p.x, p.y);
         ROS_INFO_STREAM(
-        "Point (100,100): "
-        << isPointValid(
-               100,
-               100,
-               world
-           )
+            "Nearest node: "
+            << nearest
         );
-        double cx = 0;
-        double cy = 0;
-        for(const auto& obs : world.obstacles)
-        {
-            if(obs.polygon.points.size() == 1)
-            {
-                ROS_INFO_STREAM(
-                    "Cylinder center: "
-                    << obs.polygon.points[0].x
-                    << ", "
-                    << obs.polygon.points[0].y
-                );
-                cx = obs.polygon.points[0].x;
-                cy = obs.polygon.points[0].y;
-            }
-            break;
-        }
+
+        RRTNode node;
+        node.x = p.x;
+        node.y = p.y;
+        node.parent = nearest;
+        tree.push_back(node);
         ROS_INFO_STREAM(
-        "Point center cylinder DEBUG: "
-        << isPointValid(cx, cy, world));
+        "Tree size: "
+        << tree.size());
 
         rate.sleep();
     }
