@@ -1,6 +1,7 @@
 #include <ros/ros.h>
 #include <obstacles_msgs/ObstacleArrayMsg.h>
 #include <geometry_msgs/PoseArray.h>
+#include <visualization_msgs/Marker.h>
 
 #include "collision_checker.hpp"
 #include "sampler.hpp"
@@ -58,6 +59,12 @@ int main(int argc, char** argv){
     ros::NodeHandle nh;
     std::vector<RRTNode> tree;
 
+    ros::Publisher marker_pub =
+    nh.advertise<visualization_msgs::Marker>(
+        "/rrt_tree",
+        1
+    );
+
     ros::Subscriber obstacle_sub =
     nh.subscribe(
         "/obstacles",
@@ -110,21 +117,83 @@ int main(int argc, char** argv){
             ROS_INFO_STREAM("Root node created");
         }
 
-        //TODO: sostituire p (sample casuale) con rrt based choice del sample
         int nearest = nearestNode(tree, p.x, p.y);
         ROS_INFO_STREAM(
             "Nearest node: "
             << nearest
         );
 
-        RRTNode node;
-        node.x = p.x;
-        node.y = p.y;
+        RRTNode node =steer(tree[nearest], p.x, p.y, 0.5);
         node.parent = nearest;
         tree.push_back(node);
-        ROS_INFO_STREAM(
-        "Tree size: "
-        << tree.size());
+        ROS_INFO_STREAM("Nearest: ("<< tree[nearest].x<< ", "<< tree[nearest].y<< ")");
+        ROS_INFO_STREAM("New node: ("<< node.x<< ", "<< node.y<< ")");
+
+        // to draw tree nodes on map
+        visualization_msgs::Marker nodes;
+
+        nodes.header.frame_id = "map";
+        nodes.header.stamp = ros::Time::now();
+
+        nodes.ns = "rrt_nodes";
+        nodes.id = 0;
+
+        nodes.type = visualization_msgs::Marker::POINTS;
+        nodes.action = visualization_msgs::Marker::ADD;
+
+        nodes.scale.x = 0.15;
+        nodes.scale.y = 0.15;
+
+        nodes.color.a = 1.0;
+        nodes.color.g = 1.0;
+
+        for(const auto& n : tree){
+            geometry_msgs::Point p;
+            p.x = n.x;
+            p.y = n.y;
+            p.z = 0.0;
+
+            nodes.points.push_back(p);
+        }
+        marker_pub.publish(nodes);
+
+        //here edges
+        visualization_msgs::Marker edges;
+        edges.header.frame_id = "map";
+        edges.header.stamp = ros::Time::now();
+
+        edges.ns = "rrt_edges";
+        edges.id = 1;
+
+        edges.type = visualization_msgs::Marker::LINE_LIST;
+
+        edges.action = visualization_msgs::Marker::ADD;
+
+        edges.scale.x = 0.03;
+
+        edges.color.a = 1.0;
+        edges.color.r = 1.0;
+
+        for(size_t i = 1; i < tree.size(); i++)
+        {
+            geometry_msgs::Point p1;
+            geometry_msgs::Point p2;
+
+            p1.x = tree[i].x;
+            p1.y = tree[i].y;
+
+            int parent = tree[i].parent;
+
+            p2.x = tree[parent].x;
+            p2.y = tree[parent].y;
+
+            edges.points.push_back(p1);
+            edges.points.push_back(p2);
+        }
+
+        marker_pub.publish(edges);
+
+        //-----
 
         rate.sleep();
     }
