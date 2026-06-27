@@ -33,16 +33,62 @@ bool pointInsideBox(double x, double y, const WorldModel::Obstacle& obs){
     return true;
 }
 
-bool isPointValid(double x, double y, const WorldModel& world){
-    for(const auto& obs : world.obstacles){
-        if(obs.radius > 0){
-            if(pointInsideCylinder(x,y,obs))
-                return false;
-        }
-        else{
-            if(pointInsideBox(x,y,obs))
-                return false;
+bool isInsideMap(double x,double y,const geometry_msgs::Polygon& polygon){
+    bool inside = false;
+    int n = polygon.points.size();
+
+    for(int i = 0, j = n - 1; i < n; j = i++){
+        double xi = polygon.points[i].x;
+        double yi = polygon.points[i].y;
+        double xj = polygon.points[j].x;
+        double yj = polygon.points[j].y;
+
+        bool intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if(intersect){
+            inside = !inside;
         }
     }
+    return inside;
+}
+
+bool isPointValid(double x, double y, const WorldModel& world){
+    if(!isInsideMap(x, y, world.borders)){
+        return false;
+    }
+
+    for(const auto& obs : world.obstacles){
+        if(obs.radius > 0){
+            if(pointInsideCylinder(x,y,obs)){
+                return false;
+            }
+        }
+        else{
+            if(pointInsideBox(x,y,obs)){
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool isSegmentValid(double x1,double y1,double x2,double y2,const WorldModel& world){
+    double dx = x2 - x1;
+    double dy = y2 - y1;
+
+    double length = std::sqrt(dx*dx + dy*dy);
+    double resolution = 0.05;   // 5 cm
+    int steps = std::max(1, (int)(length / resolution));
+
+    for(int i = 0; i <= steps; i++){
+        double t = (double)i / steps;
+
+        double x = x1 + t * dx;
+        double y = y1 + t * dy;
+
+        if(!isPointValid(x, y, world)){
+            return false;
+        }
+    }
+
     return true;
 }

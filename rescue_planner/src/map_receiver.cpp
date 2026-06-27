@@ -95,18 +95,13 @@ int main(int argc, char** argv){
 
     ROS_INFO("Map receiver started");
 
-    ros::Rate rate(1);
+    ros::Rate rate(100);
 
     while(ros::ok()){
         ros::spinOnce();
 
         SamplePoint p = sampleRandomPoint(world);
-        ROS_INFO_STREAM(
-            "Sample: "
-            << p.x
-            << ", "
-            << p.y
-        );
+        //ROS_INFO_STREAM("Sample: "<< p.x << ", "<< p.y);
 
         if(tree.empty()){
             RRTNode root;
@@ -118,16 +113,19 @@ int main(int argc, char** argv){
         }
 
         int nearest = nearestNode(tree, p.x, p.y);
-        ROS_INFO_STREAM(
+        /*ROS_INFO_STREAM(
             "Nearest node: "
             << nearest
-        );
+        );*/
 
-        RRTNode node =steer(tree[nearest], p.x, p.y, 0.5);
-        node.parent = nearest;
-        tree.push_back(node);
-        ROS_INFO_STREAM("Nearest: ("<< tree[nearest].x<< ", "<< tree[nearest].y<< ")");
-        ROS_INFO_STREAM("New node: ("<< node.x<< ", "<< node.y<< ")");
+        RRTNode node = steer(tree[nearest], p.x, p.y, 0.5);
+        // check for collisions in segment
+        if(isSegmentValid(tree[nearest].x, tree[nearest].y, node.x, node.y, world)){
+            node.parent = nearest;
+            tree.push_back(node);
+        }
+        //ROS_INFO_STREAM("Nearest: ("<< tree[nearest].x<< ", "<< tree[nearest].y<< ")");
+        //ROS_INFO_STREAM("New node: ("<< node.x<< ", "<< node.y<< ")");
 
         // to draw tree nodes on map
         visualization_msgs::Marker nodes;
