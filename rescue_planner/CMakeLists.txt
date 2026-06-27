@@ -130,7 +130,10 @@ add_executable(map_receiver
     src/map_receiver.cpp
     src/collision_checker.cpp
     src/sampler.cpp
-    src/rrt.cpp
+
+    src/planning/rrt.cpp
+    src/planning/prm.cpp
+    src/planning/rrt_star.cpp
 )
 
 target_link_libraries(map_receiver

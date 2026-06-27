@@ -27,13 +27,17 @@ Open a new terminal in the container with:
 ~~~
 dock-other
 ~~~
-Run the combinatorial planner:
+Run the combinatorial planners:
 ~~~
 rosrun
 ~~~
-Run the sample-based planner:
+Run the sample-based planners with roslaunch file. Default version with rrt:
 ~~~
-rosrun
+roslaunch rescue_planner rescue_map.launch
+~~~
+or input the planner parameter (prm, rrt, rrt_star):
+~~~
+roslaunch rescue_planner rescue_map.launch planner_type:=prm
 ~~~
 
 

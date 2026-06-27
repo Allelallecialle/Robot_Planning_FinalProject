@@ -15,6 +15,7 @@
   <arg name="elements_models_path" default="$(find map_pkg)/models" />
   <arg name="gazebo_models_path" default="$(find map_pkg)/worlds" />
 
+  <arg name="planner_type" default="rrt"/>
   <arg name="x_pos" default="0.0" />
   <arg name="y_pos" default="0.0" />
   <arg name="yaw_pos" default="0.0" />
@@ -73,7 +74,9 @@
       pkg="rescue_planner"
       type="map_receiver"
       name="map_receiver"
-      output="screen"/>
+      output="screen">
+      <param name="planner_type" value="$(arg planner_type)"/>
+  <node/>
 
   <!-- RViz (optional) -->
   <node pkg="rviz" type="rviz" name="rviz" if="$(arg use_rviz)" args="-d $(find loco_planning)/rviz/conf_multiple.rviz" />
