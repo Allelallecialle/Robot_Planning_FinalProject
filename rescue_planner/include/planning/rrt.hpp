@@ -6,14 +6,12 @@
 #include "planner.hpp"
 #include "world_model.hpp"
 
-class RRT : public Planner
-{
-     explicit RRT(ros::NodeHandle& nh);
+class RRT : public Planner{
+public:
 
+    explicit RRT(ros::NodeHandle& nh);
     void initialize(const WorldModel& world) override;
-
     void step() override;
-
     void visualize() override;
 
 private:
@@ -28,12 +26,7 @@ private:
     const WorldModel* world_;
     ros::Publisher marker_pub_;
 
-    int nearestNode(const std::vector<RRTNode>& tree, double x, double y);
-
-    RRTNode steer(
-        const RRTNode& nearest,
-        double target_x,
-        double target_y,
-        double step_size
-    );
+    int nearestNode(double x, double y);
+    //const std::vector<RRTNode>& tree,
+    RRTNode steer(const RRTNode& nearest,double target_x,double target_y,double step_size);
 };

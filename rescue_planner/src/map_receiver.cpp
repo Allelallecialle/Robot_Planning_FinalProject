@@ -117,15 +117,14 @@ int main(int argc, char** argv){
     else
         planner = std::make_unique<RRT>(nh);
 
-    while(ros::ok())
-    {
+    while(ros::ok()){
         ros::spinOnce();
+
         planner->initialize(world);
         planner->step();
         planner->visualize();
 
         rate.sleep();
-    }
     }
     return 0;
 }

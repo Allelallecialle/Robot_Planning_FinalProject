@@ -3,13 +3,13 @@
 #include "collision_checker.hpp"
 #include <cmath>
 
+//constructor definition
 RRT::RRT(ros::NodeHandle& nh){
     world_ = nullptr;
     marker_pub_ =
         nh.advertise<visualization_msgs::Marker>(
             "/rrt_tree",
-            1
-        );
+            1);
 }
 
 void RRT::initialize(const WorldModel& world)
@@ -52,7 +52,7 @@ int RRT::nearestNode(double x, double y){
     return best_index;
 }
 
-int RRT::steer(const RRTNode& nearest, double target_x, double target_y, double step_size){
+RRT::RRTNode RRT::steer(const RRTNode& nearest, double target_x, double target_y, double step_size){
     RRTNode new_node;
     double dx = target_x - nearest.x;
     double dy = target_y - nearest.y;
@@ -71,11 +71,9 @@ int RRT::steer(const RRTNode& nearest, double target_x, double target_y, double 
 }
 
 void RRT::step(){
-    SamplePoint p =
-        sampleRandomPoint(*world_);
+    SamplePoint p = sampleRandomPoint(*world_);
 
-    int nearest =
-        nearestNode(p.x,p.y);
+    int nearest = nearestNode(p.x,p.y);
 
     RRTNode node =
         steer(tree[nearest],
@@ -96,13 +94,6 @@ void RRT::step(){
 }
 
 void RRT::visualize(){
-   ros::Publisher marker_pub_;
-   RRT(ros::NodeHandle& nh);
-   marker_pub_ =
-        nh.advertise<visualization_msgs::Marker>(
-        "/rrt_tree",
-        1);
-
    // to draw tree nodes on map
    visualization_msgs::Marker nodes;
 
@@ -129,7 +120,7 @@ void RRT::visualize(){
 
         nodes.points.push_back(p);
     }
-    marker_pub.publish(nodes);
+    marker_pub_.publish(nodes);
 
     //here edges
     visualization_msgs::Marker edges;
@@ -165,6 +156,6 @@ void RRT::visualize(){
         edges.points.push_back(p2);
     }
 
-    marker_pub.publish(edges);
+    marker_pub_.publish(edges);
    //-----
 }

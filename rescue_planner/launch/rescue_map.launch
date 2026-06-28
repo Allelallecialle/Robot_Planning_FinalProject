@@ -76,7 +76,7 @@
       name="map_receiver"
       output="screen">
       <param name="planner_type" value="$(arg planner_type)"/>
-  <node/>
+  </node>
 
   <!-- RViz (optional) -->
   <node pkg="rviz" type="rviz" name="rviz" if="$(arg use_rviz)" args="-d $(find loco_planning)/rviz/conf_multiple.rviz" />
