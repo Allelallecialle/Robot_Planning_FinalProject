@@ -61,14 +61,8 @@ int main(int argc, char** argv){
     ros::init(argc, argv, "map_receiver");
 
     ros::NodeHandle nh;
+    ros::NodeHandle pnh("~");
     std::string planner_type;
-
-    /*
-    ros::Publisher marker_pub =
-    nh.advertise<visualization_msgs::Marker>(
-        "/rrt_tree",
-        1
-    );*/
 
     ros::Subscriber obstacle_sub =
     nh.subscribe(
@@ -102,20 +96,25 @@ int main(int argc, char** argv){
     ROS_INFO("Map receiver started");
     ros::Rate rate(100);
 
-    nh.param("planner_type",
-             planner_type,
-             std::string("rrt"));
+    pnh.param("planner_type", planner_type, std::string("rrt"));
+    ROS_INFO_STREAM(
+        "planner_type = ["
+        << planner_type
+        << "]"
+    );
 
     std::unique_ptr<Planner> planner;
 
-    if(planner_type=="prm")
-        planner = std::make_unique<PRM>(nh);
-
-    else if(planner_type=="rrt_star")
-        planner = std::make_unique<RRTStar>(nh);
-
-    else
-        planner = std::make_unique<RRT>(nh);
+    if(planner_type=="prm"){
+        planner = std::make_unique<PRM>(pnh);
+        ROS_INFO("PRM SELECTED");
+    }else if(planner_type=="rrt_star"){
+        planner = std::make_unique<RRTStar>(pnh);
+        ROS_INFO("RRT STAR SELECTED");
+    }else{
+        planner = std::make_unique<RRT>(pnh);
+        ROS_INFO("RRT SELECTED");
+    }
 
     while(ros::ok()){
         ros::spinOnce();

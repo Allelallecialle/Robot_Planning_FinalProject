@@ -30,20 +30,15 @@ void RRT::initialize(const WorldModel& world)
 
 int RRT::nearestNode(double x, double y){
     int best_index = 0;
-
     double best_distance = 1e9;
 
-    for(size_t i = 0; i < tree.size(); i++)
-    {
+    for(size_t i = 0; i < tree.size(); i++){
         double dx = tree[i].x - x;
         double dy = tree[i].y - y;
 
-        double distance =
-            dx * dx +
-            dy * dy;
+        double distance = dx * dx + dy * dy;
 
-        if(distance < best_distance)
-        {
+        if(distance < best_distance){
             best_distance = distance;
             best_index = i;
         }
@@ -75,19 +70,9 @@ void RRT::step(){
 
     int nearest = nearestNode(p.x,p.y);
 
-    RRTNode node =
-        steer(tree[nearest],
-              p.x,
-              p.y,
-              1.0);
+    RRTNode node = steer(tree[nearest], p.x, p.y, 1.0);
 
-    if(isSegmentValid(
-        tree[nearest].x,
-        tree[nearest].y,
-        node.x,
-        node.y,
-        *world_))
-    {
+    if(isSegmentValid(tree[nearest].x,tree[nearest].y,node.x,node.y,*world_)){
         node.parent = nearest;
         tree.push_back(node);
     }

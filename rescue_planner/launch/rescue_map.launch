@@ -15,7 +15,7 @@
   <arg name="elements_models_path" default="$(find map_pkg)/models" />
   <arg name="gazebo_models_path" default="$(find map_pkg)/worlds" />
 
-  <arg name="planner_type" default="rrt"/>
+  <arg name="planner_type"/>
   <arg name="x_pos" default="0.0" />
   <arg name="y_pos" default="0.0" />
   <arg name="yaw_pos" default="0.0" />

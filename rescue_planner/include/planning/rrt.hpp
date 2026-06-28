@@ -27,6 +27,5 @@ private:
     ros::Publisher marker_pub_;
 
     int nearestNode(double x, double y);
-    //const std::vector<RRTNode>& tree,
     RRTNode steer(const RRTNode& nearest,double target_x,double target_y,double step_size);
 };
