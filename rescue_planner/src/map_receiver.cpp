@@ -4,11 +4,15 @@
 
 #include <obstacles_msgs/ObstacleArrayMsg.h>
 #include <geometry_msgs/PoseArray.h>
+#include <nav_msgs/Odometry.h>
+#include <std_msgs/Int32.h>
+#include <cmath>
 
 #include "planning/planner.hpp"
 #include "planning/rrt.hpp"
 #include "planning/prm.hpp"
 #include "planning/rrt_star.hpp"
+#include "planning/visibility_planner.hpp"
 
 #include "world_model.hpp"
 WorldModel world;
@@ -27,6 +31,7 @@ void obstacleCallback(
 
         world.obstacles.push_back(obstacle);
     }
+    world.obstacles_ready = true;
 }
 
 void victimCallback(
@@ -42,10 +47,15 @@ void victimCallback(
 
         victim.x = victim_msg.polygon.points[0].x;
         victim.y = victim_msg.polygon.points[0].y;
-        victim.radius = victim_msg.radius;
+        // IMPORTANT: send_victims.cpp publishes the victim WEIGHT (reward) in
+        // the `radius` field ("the assigned value indicates the weight"). The
+        // physical victim disk radius is fixed (~0.5 m, rescue = reach centre).
+        victim.value = victim_msg.radius;
+        victim.radius = 0.5;
 
         world.victims.push_back(victim);
     }
+    world.victims_ready = true;
 }
 void gatesCallback(
     const geometry_msgs::PoseArray::ConstPtr& msg){
@@ -55,6 +65,21 @@ void bordersCallback(
     const geometry_msgs::Polygon::ConstPtr& msg){
     world.borders = *msg;
 }
+void odomCallback(
+    const nav_msgs::Odometry::ConstPtr& msg){
+    world.start.x = msg->pose.pose.position.x;
+    world.start.y = msg->pose.pose.position.y;
+    const auto& q = msg->pose.pose.orientation;
+    const double t0 = 2.0 * (q.w * q.z + q.x * q.y);
+    const double t1 = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+    world.start.yaw = std::atan2(t0, t1);
+    world.start_ready = true;
+}
+void timeoutCallback(
+    const std_msgs::Int32::ConstPtr& msg){
+    world.victims_timeout = msg->data;
+    world.timeout_ready = true;
+}
 
 
 int main(int argc, char** argv){
@@ -63,6 +88,8 @@ int main(int argc, char** argv){
     ros::NodeHandle nh;
     ros::NodeHandle pnh("~");
     std::string planner_type;
+    std::string robot_name;
+    pnh.param<std::string>("robot_name", robot_name, std::string("limo0"));
 
     ros::Subscriber obstacle_sub =
     nh.subscribe(
@@ -92,6 +119,21 @@ int main(int argc, char** argv){
         bordersCallback
     );
 
+    // Robot start pose and rescue time budget (used by the combinatorial planner).
+    ros::Subscriber odom_sub =
+    nh.subscribe(
+        "/" + robot_name + "/odom",
+        1,
+        odomCallback
+    );
+
+    ros::Subscriber timeout_sub =
+    nh.subscribe(
+        "/victims_timeout",
+        1,
+        timeoutCallback
+    );
+
 
     ROS_INFO("Map receiver started");
     ros::Rate rate(100);
@@ -111,6 +153,9 @@ int main(int argc, char** argv){
     }else if(planner_type=="rrt_star"){
         planner = std::make_unique<RRTStar>(pnh);
         ROS_INFO("RRT STAR SELECTED");
+    }else if(planner_type=="visibility"){
+        planner = std::make_unique<VisibilityPlanner>(pnh);
+        ROS_INFO("VISIBILITY (COMBINATORIAL) SELECTED");
     }else{
         planner = std::make_unique<RRT>(pnh);
         ROS_INFO("RRT SELECTED");

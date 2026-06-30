@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(rescue_planner)
 
-## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+## The combinatorial planner uses C++17 features (structured bindings, etc.)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+## std::thread is used to stream the reference trajectory.
+find_package(Threads REQUIRED)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -14,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   visualization_msgs
+  loco_planning          # provides the Reference.msg consumed by the controller
 )
 
 ## System dependencies are found with CMake's conventions
@@ -134,10 +139,22 @@ add_executable(map_receiver
     src/planning/rrt.cpp
     src/planning/prm.cpp
     src/planning/rrt_star.cpp
+
+    # combinatorial (visibility-graph) planner
+    src/planning/geometry_utils.cpp
+    src/planning/dubins.cpp
+    src/planning/visibility_graph.cpp
+    src/planning/orienteering.cpp
+    src/planning/dubins_dp.cpp
+    src/planning/visibility_planner.cpp
 )
+
+# Ensure message headers (e.g. loco_planning/Reference.h) are generated first.
+add_dependencies(map_receiver ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(map_receiver
     ${catkin_LIBRARIES}
+    Threads::Threads
 )
 
 
