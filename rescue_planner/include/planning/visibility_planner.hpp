@@ -31,9 +31,9 @@
 
 #include "planner.hpp"
 #include "world_model.hpp"
-#include "planning/geometry_utils.hpp"
-#include "planning/visibility_graph.hpp"
-#include "planning/dubins.hpp"
+#include "utils/geometry_utils.hpp"
+#include "task/visibility_graph.hpp"
+#include "trajectory/dubins.hpp"
 
 class VisibilityPlanner : public Planner {
 public:

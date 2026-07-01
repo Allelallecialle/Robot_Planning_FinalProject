@@ -1,4 +1,4 @@
-#include "planning/dubins.hpp"
+#include "trajectory/dubins.hpp"
 
 #include <limits>
 

@@ -1,9 +1,9 @@
-#include "planning/dubins_dp.hpp"
+#include "trajectory/dubins_dp.hpp"
 
 #include <cmath>
 #include <limits>
 
-#include "planning/dubins.hpp"
+#include "trajectory/dubins.hpp"
 
 namespace comb {
 

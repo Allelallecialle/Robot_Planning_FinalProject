@@ -139,14 +139,15 @@ add_executable(map_receiver
     src/planning/rrt.cpp
     src/planning/prm.cpp
     src/planning/rrt_star.cpp
-
-    # combinatorial (visibility-graph) planner
-    src/planning/geometry_utils.cpp
-    src/planning/dubins.cpp
-    src/planning/visibility_graph.cpp
-    src/planning/orienteering.cpp
-    src/planning/dubins_dp.cpp
     src/planning/visibility_planner.cpp
+
+    src/utils/geometry_utils.cpp
+
+    src/trajectory/dubins.cpp
+    src/trajectory/dubins_dp.cpp
+
+    src/task/visibility_graph.cpp
+    src/task/orienteering.cpp
 )
 
 # Ensure message headers (e.g. loco_planning/Reference.h) are generated first.

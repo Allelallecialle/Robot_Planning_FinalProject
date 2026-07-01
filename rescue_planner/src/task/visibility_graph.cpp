@@ -1,4 +1,4 @@
-#include "planning/visibility_graph.hpp"
+#include "task/visibility_graph.hpp"
 
 #include <algorithm>
 #include <limits>

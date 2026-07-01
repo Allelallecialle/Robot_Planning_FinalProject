@@ -22,7 +22,7 @@
 // ============================================================================
 
 #include <vector>
-#include "planning/geometry_utils.hpp"
+#include "utils/geometry_utils.hpp"
 
 namespace comb {
 

@@ -9,8 +9,8 @@
 #include <std_msgs/Float64MultiArray.h>
 #include <loco_planning/Reference.h>
 
-#include "planning/orienteering.hpp"
-#include "planning/dubins_dp.hpp"
+#include "task/orienteering.hpp"
+#include "trajectory/dubins_dp.hpp"
 
 namespace {
 // yaw from a ROS quaternion (z-axis rotation), same formula as planner_base.py.
