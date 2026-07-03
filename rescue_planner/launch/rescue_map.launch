@@ -68,6 +68,11 @@
     <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_limo$(arg robot_id)_odom"
       args="0 0 0 0 0 0 map limo$(arg robot_id)/odom" />
 
+    <!-- Controller -->
+    <group if="$(arg start_controller)">
+        <node pkg="loco_planning" type="controller.py" name="controller" output="screen" args="--robot_id $(arg robot_id) --debug $(arg debug)"/>
+    </group>
+
   </group>
 
   <!-- New node for map -->
