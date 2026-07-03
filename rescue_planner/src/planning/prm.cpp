@@ -11,6 +11,8 @@
 #include <vector>
 #include <loco_planning/Reference.h>
 #include <thread>
+#include <sstream>
+#include <iomanip>
 
 
 PRM::PRM(ros::NodeHandle& nh){
@@ -120,8 +122,40 @@ void PRM::step(){
     for(const auto& v : world_->victims){
         values.push_back(v.value);
     }
-    double budget = world_->victims_timeout * 0.3;        // v_max
+
+    const double v_max = 0.3;
+    const double dubins_safety = 1.15;
+
+    double budget;
+
+    if(world_->victims_timeout > 0){
+        budget = v_max * world_->victims_timeout * dubins_safety;
+    }
+    else{
+        // Unlimited mission
+        budget = 1e9;
+    }
+
+    ROS_INFO("Victims timeout = %.2f",
+         world_->victims_timeout);
+
     auto result = comb::solveOrienteering(D, values, budget, "auto");
+
+    ROS_INFO("Budget = %.2f", budget);
+
+    for(size_t i=0;i<D.size();i++){
+        std::stringstream ss;
+
+        for(size_t j=0;j<D[i].size();j++){
+            if(std::isinf(D[i][j]))
+                ss << "INF ";
+            else
+                ss << std::fixed << std::setprecision(1)
+                   << D[i][j] << " ";
+        }
+
+        ROS_INFO("D[%lu] = %s", i, ss.str().c_str());
+    }
     std::vector<int> poiOrder;
 
     poiOrder.push_back(0);
