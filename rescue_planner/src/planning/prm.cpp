@@ -87,6 +87,18 @@ void PRM::step(){
         return;
 
     roadmap_ = buildRoadmapGraph();
+    // --- for benchmark ----
+    if(metrics_){
+        metrics_->roadmap_nodes = roadmap_.nodes.size();
+
+        int edges = 0;
+        for(const auto& adj : roadmap_.adjacency)
+            edges += adj.size();
+
+        metrics_->roadmap_edges = edges;
+    }
+    // -------------------
+
     auto mission = computeVictimMission(roadmap_, *world_);
     if(!mission.feasible){
         ROS_WARN("No feasible rescue mission found.");
@@ -98,6 +110,14 @@ void PRM::step(){
     ROS_INFO("Selected %lu victims", mission.selected_victims.size());
     ROS_INFO("Collected value %.2f", mission.collected_value);
     ROS_INFO("Waypoint count = %lu", mission.graph_path.size());
+
+    // --- for benchmark ----
+    if(metrics_){
+        metrics_->victims = mission.selected_victims.size();
+        metrics_->path_length = mission.total_length;
+        metrics_->success = mission.feasible;
+    }
+    // -------------------
 
     reference_ = generateReferenceFromGraphPath(roadmap_, mission.graph_path, world_->start.yaw);
     ROS_INFO("Reference samples = %lu", reference_.size());

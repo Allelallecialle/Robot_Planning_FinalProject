@@ -97,6 +97,16 @@ void RRT::step(){
 
     roadmap_ = buildRoadmapGraph();
 
+    if(metrics_){
+        metrics_->roadmap_nodes = roadmap_.nodes.size();
+
+        int edges = 0;
+        for(const auto& adj : roadmap_.adjacency)
+            edges += adj.size();
+
+        metrics_->roadmap_edges = edges;
+    }
+
     auto mission = computeVictimMission(roadmap_, *world_);
     ROS_INFO("Mission feasible = %d", mission.feasible);
     ROS_INFO("Roadmap nodes = %lu", roadmap_.nodes.size());
@@ -111,6 +121,12 @@ void RRT::step(){
 
     ROS_INFO("Selected %lu victims",mission.selected_victims.size());
     ROS_INFO("Collected value %.2f", mission.collected_value);
+
+    if(metrics_){
+        metrics_->victims = mission.selected_victims.size();
+        metrics_->path_length = mission.total_length;
+        metrics_->success = mission.feasible;
+    }
 
     reference_ = generateReferenceFromGraphPath(roadmap_, mission.graph_path, world_->start.yaw);
 
@@ -265,6 +281,8 @@ void RRT::publishReference(const std::vector<comb::RefSample>& ref){
     ros::Publisher pub = ref_pub_;
     publishRef(ref, pub);
 }
+
+// for benchmark
 bool RRT::isPlanningDone() const
 {
     return planning_done;

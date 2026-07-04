@@ -13,27 +13,11 @@
 #include "planning/prm.hpp"
 #include "planning/rrt_star.hpp"
 #include "planning/visibility_planner.hpp"
+#include "utils/benchmark_metrics.hpp"
 
 #include "world_model.hpp"
 #include <fstream>
 
-struct RunMetrics
-{
-    std::string planner;
-
-    double initialization_time = 0.0;
-    double planning_time = 0.0;
-    double execution_time = 0.0;
-
-    int roadmap_nodes = 0;
-    int roadmap_edges = 0;
-
-    double path_length = 0.0;
-
-    int victims = 0;
-
-    bool success = false;
-};
 void saveMetrics(const RunMetrics& m)
 {
     const std::string filename = "/root/project_ros_ws/src/Robot_Planning_FinalProject/rescue_planner/src/test_benchmark/benchmark.csv";
@@ -52,7 +36,7 @@ void saveMetrics(const RunMetrics& m)
         << "planner,"
         << "init,"
         << "planning,"
-        << "execution,"
+        << "time_budget,"
         << "nodes,"
         << "edges,"
         << "path,"
@@ -64,7 +48,7 @@ void saveMetrics(const RunMetrics& m)
         << m.planner << ","
         << m.initialization_time << ","
         << m.planning_time << ","
-        << m.execution_time << ","
+        << m.time_budget << ","
         << m.roadmap_nodes << ","
         << m.roadmap_edges << ","
         << m.path_length << ","
@@ -227,6 +211,7 @@ int main(int argc, char** argv){
         planner = std::make_unique<RRT>(pnh);
         ROS_INFO("RRT SELECTED");
     }
+    planner->setMetrics(&metrics);
 
     while(ros::ok()){
         ros::spinOnce();
@@ -235,6 +220,7 @@ int main(int argc, char** argv){
             t0 = ros::WallTime::now();
             planner->initialize(world);
             metrics.initialization_time = (ros::WallTime::now()-t0).toSec();
+            metrics.time_budget = world.victims_timeout;
             initialized = true;
             ROS_INFO("Planner initialized.");
         }

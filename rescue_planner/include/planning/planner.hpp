@@ -1,5 +1,6 @@
 #pragma once
 #include "world_model.hpp"
+#include "utils/benchmark_metrics.hpp"
 
 class Planner{
 public:
@@ -9,4 +10,12 @@ public:
     virtual ~Planner() {}
 
     virtual bool isPlanningDone() const = 0;
+    // Benchmark
+    void setMetrics(RunMetrics* m)
+    {
+        metrics_ = m;
+    }
+
+protected:
+    RunMetrics* metrics_ = nullptr;
 };
