@@ -17,6 +17,7 @@ public:
     void initialize(const WorldModel& world) override;
     void step() override;
     void visualize() override;
+    bool isPlanningDone() const override;
 
     RoadmapGraph buildRoadmapGraph() const;
     void publishReference(const std::vector<comb::RefSample>& ref);

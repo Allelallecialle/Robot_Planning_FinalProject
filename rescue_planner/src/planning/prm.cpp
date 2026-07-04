@@ -248,3 +248,8 @@ void PRM::publishReference(const std::vector<comb::RefSample>& ref){
     ros::Publisher pub = ref_pub_;
     publishRef(ref, pub);
 }
+
+bool PRM::isPlanningDone() const
+{
+    return planning_done;
+}

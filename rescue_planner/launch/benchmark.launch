@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<launch>
+
+  <!-- input Parameters -->
+  <arg name="use_gui" default="true" />
+  <arg name="use_rviz" default="true" />
+  <arg name="victims_activated" default="true" />
+  <arg name="generate_new_config" default="true" />
+  <arg name="start_controller" default="true" />
+  <arg name="debug" default="false" />
+
+  <!-- Parameters -->
+  <arg name="world_name" default="empty.world" />
+  <arg name="gen_map_params_file" default="$(find map_pkg)/config/full_config.yaml" />
+  <arg name="elements_models_path" default="$(find map_pkg)/models" />
+  <arg name="gazebo_models_path" default="$(find map_pkg)/worlds" />
+
+  <!-- planner_type: prm | rrt | rrt_star (sampling-based) | visibility (combinatorial) -->
+  <arg name="planner_type" default="rrt"/>
+  <arg name="x_pos" default="0.0" />
+  <arg name="y_pos" default="0.0" />
+  <arg name="yaw_pos" default="0.0" />
+
+  <!-- ROS params -->
+  <param name="x_pos_init" value="[$(arg x_pos)]" type="yaml"/>
+  <param name="y_pos_init" value="[$(arg y_pos)]" type="yaml"/>
+  <param name="yaw_pos_init" value="[$(arg yaw_pos)]" type="yaml"/>
+  <param name="use_sim_time" value="true" />
+
+  <!-- Spawn map -->
+  <include file="$(find map_pkg)/launch/spawn_map.launch">
+    <arg name="gen_map_params_file" value="$(arg gen_map_params_file)" />
+    <arg name="gazebo_models_path" value="$(arg gazebo_models_path)" />
+    <arg name="elements_models_path" value="$(arg elements_models_path)" />
+    <arg name="victims_activated" value="$(arg victims_activated)" />
+    <arg name="generate_new_config" value="$(arg generate_new_config)" />
+  </include>
+
+  <!-- Gazebo -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find map_pkg)/worlds/$(arg world_name)" />
+    <arg name="paused" value="false" />
+    <arg name="use_sim_time" value="true" />
+    <arg name="gui" value="$(arg use_gui)" />
+    <arg name="headless" value="false" />
+    <arg name="debug" value="false" />
+  </include>
+
+  <!-- Robot -->
+  <group ns="limo0">
+
+    <arg name="robot_id" value="0" />
+
+    <include file="$(find limo_description)/launch/upload.launch">
+      <arg name="robot_id" default="$(arg robot_id)" />
+    </include>
+
+    <!--spawn the limo robot-->
+    <node name="spawn_model" pkg="gazebo_ros" type="spawn_model"
+      args="-urdf -param robot_description -model limo$(arg robot_id) -x $(arg x_pos) -y $(arg y_pos) -z 1. -Y $(arg yaw_pos)" />
+
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" >
+    <param name="rate" value="100" />
+    </node>
+
+    <!--static TF -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_limo$(arg robot_id)_odom"
+      args="0 0 0 0 0 0 map limo$(arg robot_id)/odom" />
+
+    <!-- Controller -->
+    <group if="$(arg start_controller)">
+        <node pkg="loco_planning" type="controller.py" name="controller" output="screen" args="--robot_id $(arg robot_id) --debug $(arg debug)"/>
+    </group>
+
+  </group>
+
+  <!-- New node for benchmark -->
+    <node
+      pkg="rescue_planner"
+      type="benchmark"
+      name="benchmark"
+      output="screen">
+      <param name="planner_type" value="$(arg planner_type)"/>
+  </node>
+
+  <!-- RViz (optional) -->
+  <node pkg="rviz" type="rviz" name="rviz" if="$(arg use_rviz)" args="-d $(find loco_planning)/rviz/conf_multiple.rviz" />
+
+
+</launch>

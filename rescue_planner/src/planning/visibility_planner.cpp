@@ -67,6 +67,12 @@ void VisibilityPlanner::step() {
     if (!worldReady()) return;
     done_.store(true);  // plan exactly once
     plan();
+    planning_done = true;
+}
+
+bool VisibilityPlanner::isPlanningDone() const
+{
+    return planning_done;
 }
 
 void VisibilityPlanner::plan() {

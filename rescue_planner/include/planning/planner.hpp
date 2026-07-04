@@ -7,4 +7,6 @@ public:
     virtual void step() = 0;
     virtual void visualize() = 0;
     virtual ~Planner() {}
+
+    virtual bool isPlanningDone() const = 0;
 };

@@ -313,3 +313,8 @@ void RRTStar::publishReference(const std::vector<comb::RefSample>& ref){
     ros::Publisher pub = ref_pub_;
     publishRef(ref, pub);
 }
+
+bool RRTStar::isPlanningDone() const
+{
+    return planning_done;
+}

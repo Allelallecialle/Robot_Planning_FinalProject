@@ -17,6 +17,8 @@ public:
     void initialize(const WorldModel& world) override;
     void step() override;
     void visualize() override;
+    bool isPlanningDone() const override;
+
 
     RoadmapGraph buildRoadmapGraph() const;
     bool planning_done=false;

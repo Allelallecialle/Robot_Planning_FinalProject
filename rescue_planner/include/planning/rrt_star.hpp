@@ -16,6 +16,8 @@ public:
     void initialize(const WorldModel& world) override;
     void step() override;
     void visualize() override;
+    bool isPlanningDone() const override;
+
 
     std::vector<comb::RefSample> reference_;
     bool planning_done=false;

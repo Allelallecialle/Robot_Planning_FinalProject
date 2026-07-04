@@ -155,10 +155,42 @@ add_executable(map_receiver
     src/task/reference_generation.cpp
 )
 
+add_executable(benchmark
+    src/benchmark.cpp
+    src/collision_checker.cpp
+    src/sampler.cpp
+
+    src/planning/rrt.cpp
+    src/planning/prm.cpp
+    src/planning/rrt_star.cpp
+    src/planning/visibility_planner.cpp
+
+    src/utils/geometry_utils.cpp
+    src/utils/roadmap_utils.cpp
+    src/utils/reference_publisher.cpp
+
+    src/trajectory/dubins.cpp
+    src/trajectory/dubins_dp.cpp
+
+    src/task/visibility_graph.cpp
+    src/task/orienteering.cpp
+    src/task/victim_mission.cpp
+    src/task/roadmap_algorithms.cpp
+    src/task/reference_generation.cpp
+)
+
 # Ensure message headers (e.g. loco_planning/Reference.h) are generated first.
 add_dependencies(map_receiver ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(map_receiver
+    ${catkin_LIBRARIES}
+    Threads::Threads
+)
+
+#for benchmark
+add_dependencies(benchmark ${catkin_EXPORTED_TARGETS})
+
+target_link_libraries(benchmark
     ${catkin_LIBRARIES}
     Threads::Threads
 )

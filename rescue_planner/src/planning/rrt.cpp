@@ -265,3 +265,7 @@ void RRT::publishReference(const std::vector<comb::RefSample>& ref){
     ros::Publisher pub = ref_pub_;
     publishRef(ref, pub);
 }
+bool RRT::isPlanningDone() const
+{
+    return planning_done;
+}
