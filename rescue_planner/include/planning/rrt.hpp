@@ -35,6 +35,8 @@ private:
     ros::Publisher marker_pub_;
     std::vector<comb::RefSample> reference_;
     ros::Publisher ref_pub_;
+    std::vector<int> selected_path_;
+    RoadmapGraph roadmap_;
 
     int nearestNode(double x, double y);
     RRTNode steer(const RRTNode& nearest,double target_x,double target_y,double step_size);

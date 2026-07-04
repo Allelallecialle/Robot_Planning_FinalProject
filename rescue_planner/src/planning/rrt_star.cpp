@@ -87,28 +87,24 @@ void RRTStar::step(){
     if(tree.size() < 1500)
         return;
 
-    RoadmapGraph roadmap = buildRoadmapGraph();
-    auto mission = computeVictimMission(
-        roadmap,
-        *world_);
+    roadmap_ = buildRoadmapGraph();
+    auto mission = computeVictimMission(roadmap_, *world_);
 
-    if(!mission.feasible)
+
+
+    if(!mission.feasible){
+        ROS_WARN("No feasible rescue mission found.");
         return;
+    }
 
-    ROS_INFO("Selected %lu victims",
-             mission.selected_victims.size());
+    ROS_INFO("Selected %lu victims",mission.selected_victims.size());
+    ROS_INFO("Collected value %.2f",mission.collected_value);
 
-    ROS_INFO("Collected value %.2f",
-             mission.collected_value);
+    selected_path_ = mission.graph_path;
 
-    reference_ =
-        generateReferenceFromGraphPath(
-            roadmap,
-            mission.graph_path,
-            world_->start.yaw);
+    reference_ = generateReferenceFromGraphPath(roadmap_, mission.graph_path, world_->start.yaw);
 
-    ROS_INFO("Reference samples = %lu",
-             reference_.size());
+    ROS_INFO("Reference samples = %lu", reference_.size());
 
     publishReference(reference_);
 
@@ -186,7 +182,7 @@ void RRTStar::visualize(){
     nodes.scale.y = 0.15;
 
     nodes.color.a = 1.0;
-    nodes.color.g = 1.0;
+    nodes.color.b = 1.0;
 
     for(const auto& n : tree){
         geometry_msgs::Point p;
@@ -212,8 +208,7 @@ void RRTStar::visualize(){
 
     edges.scale.x = 0.03;
 
-    edges.color.a = 1.0;
-    edges.color.r = 1.0;
+    edges.color.a = 0.35; edges.color.r = 0.6; edges.color.g = 0.6; edges.color.b = 0.6;
 
     for(size_t i = 1; i < tree.size(); i++)
     {
@@ -234,6 +229,41 @@ void RRTStar::visualize(){
 
     marker_pub_.publish(edges);
    //-----
+   // selected path visualization
+   visualization_msgs::Marker path;
+
+    path.header.frame_id = "map";
+    path.header.stamp = ros::Time::now();
+
+    path.ns = "selected_path";
+    path.id = 100;
+
+    path.type = visualization_msgs::Marker::LINE_LIST;
+    path.action = visualization_msgs::Marker::ADD;
+
+    path.scale.x = 0.08;
+
+    path.color.a = 1.0;
+    path.color.r = 1.0;
+    path.color.g = 0.0;
+    path.color.b = 0.0;
+
+   for(size_t i=0;i+1<selected_path_.size();i++)
+    {
+        geometry_msgs::Point p1;
+        geometry_msgs::Point p2;
+
+        p1.x = roadmap_.nodes[selected_path_[i]].x;
+        p1.y = roadmap_.nodes[selected_path_[i]].y;
+
+        p2.x = roadmap_.nodes[selected_path_[i+1]].x;
+        p2.y = roadmap_.nodes[selected_path_[i+1]].y;
+
+        path.points.push_back(p1);
+        path.points.push_back(p2);
+    }
+
+    marker_pub_.publish(path);
 }
 
 RoadmapGraph RRTStar::buildRoadmapGraph() const
