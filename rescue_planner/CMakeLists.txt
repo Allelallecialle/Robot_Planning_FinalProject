@@ -143,15 +143,16 @@ add_executable(map_receiver
 
     src/utils/geometry_utils.cpp
     src/utils/roadmap_utils.cpp
+    src/utils/reference_publisher.cpp
 
     src/trajectory/dubins.cpp
     src/trajectory/dubins_dp.cpp
 
     src/task/visibility_graph.cpp
     src/task/orienteering.cpp
-    src/task/dijkstra.cpp
-    src/task/roadmap_graph.cpp
+    src/task/victim_mission.cpp
     src/task/roadmap_algorithms.cpp
+    src/task/reference_generation.cpp
 )
 
 # Ensure message headers (e.g. loco_planning/Reference.h) are generated first.

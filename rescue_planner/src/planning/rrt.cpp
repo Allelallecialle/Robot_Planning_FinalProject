@@ -1,7 +1,14 @@
 #include "planning/rrt.hpp"
 #include "sampler.hpp"
 #include "collision_checker.hpp"
+#include "task/victim_mission.hpp"
+#include "task/reference_generation.hpp"
+#include "utils/reference_publisher.hpp"
+
 #include <cmath>
+#include <loco_planning/Reference.h>
+#include <sstream>
+#include <thread>
 
 //constructor definition
 RRT::RRT(ros::NodeHandle& nh){
@@ -10,6 +17,10 @@ RRT::RRT(ros::NodeHandle& nh){
         nh.advertise<visualization_msgs::Marker>(
             "/rrt_tree",
             1);
+    ref_pub_ =
+        nh.advertise<loco_planning::Reference>(
+            "/limo0/ref",
+            10);
 }
 
 void RRT::initialize(const WorldModel& world)
@@ -76,6 +87,39 @@ void RRT::step(){
         node.parent = nearest;
         tree.push_back(node);
     }
+
+    if(planning_done){
+        return;
+    }
+
+    if(tree.size() < 300){
+        return;
+    }
+
+    RoadmapGraph roadmap = buildRoadmapGraph();
+
+    auto mission = computeVictimMission(roadmap, *world_);
+    ROS_INFO("Mission feasible = %d", mission.feasible);
+    ROS_INFO("Roadmap nodes = %lu", roadmap.nodes.size());
+    ROS_INFO("Graph path size = %lu", mission.graph_path.size());
+
+    if(!mission.feasible)
+        return;
+
+    ROS_INFO("Selected %lu victims",
+             mission.selected_victims.size());
+
+    ROS_INFO("Collected value %.2f",
+             mission.collected_value);
+
+    reference_ = generateReferenceFromGraphPath(roadmap, mission.graph_path, world_->start.yaw);
+
+    ROS_INFO("Reference samples = %lu",
+             reference_.size());
+
+    publishReference(reference_);
+
+    planning_done = true;
 }
 
 void RRT::visualize(){
@@ -143,4 +187,48 @@ void RRT::visualize(){
 
     marker_pub_.publish(edges);
    //-----
+}
+
+RoadmapGraph RRT::buildRoadmapGraph() const{
+    RoadmapGraph g;
+
+    g.nodes.reserve(tree.size());
+    g.adjacency.resize(tree.size());
+
+    for(const auto& node : tree)
+    {
+        GraphNode n;
+        n.x = node.x;
+        n.y = node.y;
+        g.nodes.push_back(n);
+    }
+
+    for(size_t i = 1; i < tree.size(); i++)
+    {
+        GraphEdge e;
+
+        e.to = tree[i].parent;
+
+        double dx = tree[i].x - tree[tree[i].parent].x;
+        double dy = tree[i].y - tree[tree[i].parent].y;
+
+        e.cost = std::sqrt(dx*dx + dy*dy);
+
+        g.adjacency[i].push_back(e);
+
+        // Undirected graph
+        GraphEdge back;
+        back.to = i;
+        back.cost = e.cost;
+
+        g.adjacency[tree[i].parent].push_back(back);
+    }
+
+    return g;
+}
+
+
+void RRT::publishReference(const std::vector<comb::RefSample>& ref){
+    ros::Publisher pub = ref_pub_;
+    publishRef(ref, pub);
 }

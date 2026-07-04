@@ -5,6 +5,9 @@
 #include "task/orienteering.hpp"
 #include "utils/roadmap_utils.hpp"
 #include "utils/geometry_utils.hpp"
+#include "task/victim_mission.hpp"
+#include "task/reference_generation.hpp"
+#include "utils/reference_publisher.hpp"
 
 #include <iostream>
 #include <cmath>
@@ -82,202 +85,23 @@ void PRM::step(){
     // wait enough generated nodes to run dijsktra
     if(graph.size() < 300)
         return;
-    // Build a temporary roadmap
+
     RoadmapGraph roadmap = buildRoadmapGraph();
-    int startNode = roadmap::addTemporaryNode(roadmap, world_->start.x, world_->start.y, *world_);
-    std::vector<int> victimNodes;
-
-    for(const auto& victim : world_->victims){
-        victimNodes.push_back(roadmap::addTemporaryNode(roadmap, victim.x, victim.y, *world_));
-    }
-    int gateNode = roadmap::addTemporaryNode(roadmap, world_->gates[0].position.x, world_->gates[0].position.y, *world_);
-
-    std::vector<int> poi;
-    poi.push_back(startNode);
-    for(int id : victimNodes){
-        poi.push_back(id);
-    }
-    poi.push_back(gateNode);
-
-    std::vector<std::vector<double>> D(
-    poi.size(),
-    std::vector<double>(poi.size()));
-    std::vector<std::vector<int>> prevs(poi.size());
-
-    for(size_t i=0;i<poi.size();i++)
-    {
-        std::vector<double> dist;
-
-        roadmap::dijkstra(
-            roadmap,
-            poi[i],
-            dist,
-            prevs[i]);
-
-        for(size_t j=0;j<poi.size();j++)
-            D[i][j]=dist[poi[j]];
-    }
-
-    std::vector<double> values;
-    for(const auto& v : world_->victims){
-        values.push_back(v.value);
-    }
-
-    const double v_max = 0.3;
-    const double dubins_safety = 1.15;
-
-    double budget;
-
-    if(world_->victims_timeout > 0){
-        budget = v_max * world_->victims_timeout * dubins_safety;
-    }
-    else{
-        // Unlimited mission
-        budget = 1e9;
-    }
-
-    ROS_INFO("Victims timeout = %.2f",
-         world_->victims_timeout);
-
-    auto result = comb::solveOrienteering(D, values, budget, "auto");
-
-    ROS_INFO("Budget = %.2f", budget);
-
-    for(size_t i=0;i<D.size();i++){
-        std::stringstream ss;
-
-        for(size_t j=0;j<D[i].size();j++){
-            if(std::isinf(D[i][j]))
-                ss << "INF ";
-            else
-                ss << std::fixed << std::setprecision(1)
-                   << D[i][j] << " ";
-        }
-
-        ROS_INFO("D[%lu] = %s", i, ss.str().c_str());
-    }
-    std::vector<int> poiOrder;
-
-    poiOrder.push_back(0);
-
-    for(int v : result.victim_order)
-        poiOrder.push_back(v+1);
-
-    poiOrder.push_back(poi.size()-1);
-
-    ROS_INFO("Selected %lu victims",
-         result.victim_order.size());
-    ROS_INFO("Collected value %.2f",
-             result.total_value);
-
-
-    // ---------- reconstruct full graph path ----------
-    std::vector<int> graphPath;
-
-    for(size_t i = 0; i + 1 < poiOrder.size(); i++)
-    {
-        std::vector<int> part =
-            roadmap::reconstructPath(
-                poi[poiOrder[i]],
-                poi[poiOrder[i+1]],
-                prevs[poiOrder[i]]);
-
-        if(part.empty())
-            continue;
-
-        if(graphPath.empty())
-        {
-            graphPath.insert(
-                graphPath.end(),
-                part.begin(),
-                part.end());
-        }
-        else
-        {
-            graphPath.insert(
-                graphPath.end(),
-                part.begin()+1,
-                part.end());
-        }
-    }
-
-    // ---------- convert graph nodes to geometric waypoints ----------
-    std::vector<comb::Vec2> waypoints;
-
-    for(int nodeId : graphPath)
-    {
-        comb::Vec2 p;
-
-        p.x = roadmap.nodes[nodeId].x;
-        p.y = roadmap.nodes[nodeId].y;
-
-        waypoints.push_back(p);
-    }
-
-    ROS_INFO("Waypoint count = %lu", waypoints.size());
-
-    if(waypoints.size() < 2)
+    auto mission = computeVictimMission(roadmap, *world_);
+    if(!mission.feasible){
+        ROS_WARN("No feasible rescue mission found.");
         return;
-
-    std::vector<double> headings =
-        comb::optimizeHeadings(
-            waypoints,
-            world_->start.yaw,
-            0.0,
-            1.0 / 0.35,
-            72);
-
-    reference_.clear();
-
-    double tOffset = 0.0;
-
-    for(size_t i=0;i+1<waypoints.size();i++)
-    {
-        comb::DubinsCurve curve =
-            comb::dubinsShortestPath(
-                waypoints[i].x,
-                waypoints[i].y,
-                headings[i],
-                waypoints[i+1].x,
-                waypoints[i+1].y,
-                headings[i+1],
-                1.0/0.35);
-
-        if(!curve.valid)
-            continue;
-
-        std::vector<comb::RefSample> leg;
-
-        comb::appendDiscretizedDubins(
-            curve,
-            0.3,
-            0.01,
-            tOffset,
-            leg);
-
-        if(reference_.empty())
-        {
-            reference_.insert(
-                reference_.end(),
-                leg.begin(),
-                leg.end());
-        }
-        else
-        {
-            reference_.insert(
-                reference_.end(),
-                leg.begin()+1,
-                leg.end());
-        }
-
-        if(!reference_.empty())
-            tOffset = reference_.back().t + 0.01;
     }
 
+    ROS_INFO("Selected %lu victims", mission.selected_victims.size());
+    ROS_INFO("Collected value %.2f", mission.collected_value);
+    ROS_INFO("Waypoint count = %lu", mission.graph_path.size());
+
+    reference_ = generateReferenceFromGraphPath(roadmap, mission.graph_path, world_->start.yaw);
     ROS_INFO("Reference samples = %lu", reference_.size());
+
     publishReference(reference_);
     planning_done = true;
-
 }
 
 void PRM::visualize(){
@@ -384,47 +208,7 @@ RoadmapGraph PRM::buildRoadmapGraph() const{
     return g;
 }
 
-void PRM::publishReference(const std::vector<comb::RefSample>& ref)
-{
-    if(ref.empty())
-        return;
-
+void PRM::publishReference(const std::vector<comb::RefSample>& ref){
     ros::Publisher pub = ref_pub_;
-
-    std::thread([pub, ref]()
-    {
-        ros::Rate rate(100);
-
-        for(const auto& s : ref)
-        {
-            if(!ros::ok())
-                return;
-
-            loco_planning::Reference msg;
-
-            msg.x_d = s.x;
-            msg.y_d = s.y;
-            msg.theta_d = s.theta;
-            msg.v_d = s.v;
-            msg.omega_d = s.omega;
-            msg.plan_finished = false;
-
-            pub.publish(msg);
-
-            rate.sleep();
-        }
-
-        loco_planning::Reference last;
-
-        last.x_d = ref.back().x;
-        last.y_d = ref.back().y;
-        last.theta_d = ref.back().theta;
-        last.v_d = 0.0;
-        last.omega_d = 0.0;
-        last.plan_finished = true;
-
-        pub.publish(last);
-
-        ROS_INFO("Reference published.");
-    }).detach();
+    publishRef(ref, pub);
 }
