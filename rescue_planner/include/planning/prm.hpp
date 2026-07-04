@@ -34,6 +34,8 @@ private:
     const WorldModel* world_;
     std::vector<comb::RefSample> reference_;
     ros::Publisher ref_pub_;
+    std::vector<int> selected_path_;
+    RoadmapGraph roadmap_;
 
     std::vector<int> nearNodes(double x, double y, double radius);
     double distance(const PRMNode& a,const PRMNode& b);
