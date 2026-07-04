@@ -77,6 +77,9 @@ RRT::RRTNode RRT::steer(const RRTNode& nearest, double target_x, double target_y
 }
 
 void RRT::step(){
+    if(planning_done)
+        return;
+
     SamplePoint p = sampleRandomPoint(*world_);
 
     int nearest = nearestNode(p.x,p.y);
@@ -88,13 +91,9 @@ void RRT::step(){
         tree.push_back(node);
     }
 
-    if(planning_done){
-        return;
-    }
 
-    if(tree.size() < 300){
+    if(tree.size() < 1500)
         return;
-    }
 
     RoadmapGraph roadmap = buildRoadmapGraph();
 

@@ -136,7 +136,7 @@ int main(int argc, char** argv){
 
 
     ROS_INFO("Map receiver started");
-    ros::Rate rate(100);
+    ros::Rate rate(1500);
 
     pnh.param("planner_type", planner_type, std::string("rrt"));
     ROS_INFO_STREAM(

@@ -83,7 +83,7 @@ void PRM::step(){
     }
 
     // wait enough generated nodes to run dijsktra
-    if(graph.size() < 300)
+    if(graph.size() < 1500)
         return;
 
     RoadmapGraph roadmap = buildRoadmapGraph();

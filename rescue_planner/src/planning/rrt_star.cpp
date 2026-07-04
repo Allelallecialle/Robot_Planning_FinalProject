@@ -1,8 +1,15 @@
 #include "planning/rrt_star.hpp"
 #include "sampler.hpp"
 #include "collision_checker.hpp"
+#include "task/victim_mission.hpp"
+#include "task/reference_generation.hpp"
+#include "utils/reference_publisher.hpp"
+
 #include <cmath>
-#include <vector>
+#include <loco_planning/Reference.h>
+#include <sstream>
+#include <thread>
+
 
 RRTStar::RRTStar(ros::NodeHandle& nh){
     world_ = nullptr;
@@ -10,6 +17,11 @@ RRTStar::RRTStar(ros::NodeHandle& nh){
         nh.advertise<visualization_msgs::Marker>(
             "/rrt_star_tree",
             1);
+
+    ref_pub_ =
+        nh.advertise<loco_planning::Reference>(
+            "/limo0/ref",
+            10);
 }
 
 void RRTStar::initialize(const WorldModel& world){
@@ -53,6 +65,8 @@ std::vector<int> RRTStar::nearNodes(double x, double y, double radius){
 }
 
 void RRTStar::step(){
+    if(planning_done)
+        return;
 
     SamplePoint p = sampleRandomPoint(*world_);
     int nearest = nearestNode(p.x,p.y);
@@ -69,6 +83,36 @@ void RRTStar::step(){
 
         rewire(tree.size()-1, near);
     }
+
+    if(tree.size() < 1500)
+        return;
+
+    RoadmapGraph roadmap = buildRoadmapGraph();
+    auto mission = computeVictimMission(
+        roadmap,
+        *world_);
+
+    if(!mission.feasible)
+        return;
+
+    ROS_INFO("Selected %lu victims",
+             mission.selected_victims.size());
+
+    ROS_INFO("Collected value %.2f",
+             mission.collected_value);
+
+    reference_ =
+        generateReferenceFromGraphPath(
+            roadmap,
+            mission.graph_path,
+            world_->start.yaw);
+
+    ROS_INFO("Reference samples = %lu",
+             reference_.size());
+
+    publishReference(reference_);
+
+    planning_done = true;
 }
 
 void RRTStar::rewire(int new_node, const std::vector<int>& near){
@@ -190,4 +234,52 @@ void RRTStar::visualize(){
 
     marker_pub_.publish(edges);
    //-----
+}
+
+RoadmapGraph RRTStar::buildRoadmapGraph() const
+{
+    RoadmapGraph g;
+
+    g.nodes.reserve(tree.size());
+    g.adjacency.resize(tree.size());
+
+    // Copy nodes
+    for(const auto& node : tree)
+    {
+        GraphNode n;
+        n.x = node.x;
+        n.y = node.y;
+
+        g.nodes.push_back(n);
+    }
+
+    // Copy edges following the current parent relation
+    for(size_t i = 1; i < tree.size(); i++)
+    {
+        int parent = tree[i].parent;
+
+        GraphEdge e;
+        e.to = parent;
+
+        double dx = tree[i].x - tree[parent].x;
+        double dy = tree[i].y - tree[parent].y;
+
+        e.cost = std::sqrt(dx*dx + dy*dy);
+
+        g.adjacency[i].push_back(e);
+
+        // make the graph undirected for Dijkstra
+        GraphEdge back;
+        back.to = i;
+        back.cost = e.cost;
+
+        g.adjacency[parent].push_back(back);
+    }
+
+    return g;
+}
+
+void RRTStar::publishReference(const std::vector<comb::RefSample>& ref){
+    ros::Publisher pub = ref_pub_;
+    publishRef(ref, pub);
 }
