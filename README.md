@@ -16,10 +16,6 @@ source devel/setup.bash
 ~~~
 
 ## Running
-### To run the simulation:
-~~~
-roslaunch
-~~~
 
 ### To run individual planners
 
@@ -54,5 +50,12 @@ manoeuvres (with per-victim heading optimisation and curved-arc clearance
 re-checking) and publishes the trajectory as `loco_planning/Reference` on
 `/<robot>/ref`. Roadmap time, planning time and the selected total value are
 logged and published on `/visibility_planner/stats`.
+
+### To run the simulation with the Benchmark
+Choose the planner type as in the previous cases presented. 
+The data about the simulation is saved in the `benchmark.csv` in the `test_benchmark` folder.
+~~~
+roslaunch rescue_planner benchmark.launch planner_type:=...
+~~~
 
 
