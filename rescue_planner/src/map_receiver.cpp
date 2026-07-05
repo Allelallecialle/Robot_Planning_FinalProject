@@ -13,6 +13,8 @@
 #include "planning/prm.hpp"
 #include "planning/rrt_star.hpp"
 #include "planning/visibility_planner.hpp"
+#include "planning/cell_decomp_planner.hpp"
+#include "planning/voronoi_planner.hpp"
 
 #include "world_model.hpp"
 WorldModel world;
@@ -156,6 +158,15 @@ int main(int argc, char** argv){
     }else if(planner_type=="visibility"){
         planner = std::make_unique<VisibilityPlanner>(pnh);
         ROS_INFO("VISIBILITY (COMBINATORIAL) SELECTED");
+    }else if(planner_type=="cell_decomp"){
+        planner = std::make_unique<CellDecompPlanner>(pnh);
+        ROS_INFO("CELL DECOMPOSITION (COMBINATORIAL) SELECTED");
+    }else if(planner_type=="cell_decomp_approx"){
+        planner = std::make_unique<CellDecompApproxPlanner>(pnh);
+        ROS_INFO("CELL DECOMPOSITION APPROX (COMBINATORIAL) SELECTED");
+    }else if(planner_type=="voronoi"){
+        planner = std::make_unique<VoronoiPlanner>(pnh);
+        ROS_INFO("VORONOI (COMBINATORIAL) SELECTED");
     }else{
         planner = std::make_unique<RRT>(pnh);
         ROS_INFO("RRT SELECTED");

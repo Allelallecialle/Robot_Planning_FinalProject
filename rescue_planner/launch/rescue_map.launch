@@ -15,7 +15,16 @@
   <arg name="elements_models_path" default="$(find map_pkg)/models" />
   <arg name="gazebo_models_path" default="$(find map_pkg)/worlds" />
 
-  <!-- planner_type: prm | rrt | rrt_star (sampling-based) | visibility (combinatorial) -->
+  <!-- planner_type selects the motion planner used by the map_receiver node:
+       Sampling-based (teammate's code):
+         rrt                 - Rapidly-exploring Random Tree
+         prm                 - Probabilistic Roadmap
+         rrt_star            - asymptotically-optimal RRT*
+       Combinatorial (roadmap -> Dijkstra -> orienteering -> Dubins):
+         visibility          - shortest-path roadmap (visibility graph)
+         cell_decomp         - exact vertical/trapezoidal cell decomposition
+         cell_decomp_approx  - approximate grid cell decomposition (NOT complete)
+         voronoi             - maximum-clearance roadmap (Generalised Voronoi Diagram) -->
   <arg name="planner_type" default="rrt"/>
   <arg name="x_pos" default="0.0" />
   <arg name="y_pos" default="0.0" />

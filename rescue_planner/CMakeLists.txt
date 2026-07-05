@@ -127,12 +127,11 @@ include_directories(include
   ${catkin_INCLUDE_DIRS}
 )
 
-## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/rescue_planner.cpp
-# )
-add_executable(map_receiver
-    src/map_receiver.cpp
+## Declare a C++ library with ALL the planning/geometry sources EXCEPT the
+## node entry points (map_receiver.cpp / benchmark.cpp, which contain main()).
+## Both executables and the gtest test target link against this single library,
+## so the test binaries can reuse the exact same code without pulling in main().
+add_library(${PROJECT_NAME}_lib
     src/collision_checker.cpp
     src/sampler.cpp
 
@@ -140,6 +139,8 @@ add_executable(map_receiver
     src/planning/prm.cpp
     src/planning/rrt_star.cpp
     src/planning/visibility_planner.cpp
+    src/planning/cell_decomp_planner.cpp     # combinatorial: cell decomposition
+    src/planning/voronoi_planner.cpp         # combinatorial: Voronoi/GVD roadmap
 
     src/utils/geometry_utils.cpp
     src/utils/roadmap_utils.cpp
@@ -153,44 +154,31 @@ add_executable(map_receiver
     src/task/victim_mission.cpp
     src/task/roadmap_algorithms.cpp
     src/task/reference_generation.cpp
-)
-
-add_executable(benchmark
-    src/benchmark.cpp
-    src/collision_checker.cpp
-    src/sampler.cpp
-
-    src/planning/rrt.cpp
-    src/planning/prm.cpp
-    src/planning/rrt_star.cpp
-    src/planning/visibility_planner.cpp
-
-    src/utils/geometry_utils.cpp
-    src/utils/roadmap_utils.cpp
-    src/utils/reference_publisher.cpp
-
-    src/trajectory/dubins.cpp
-    src/trajectory/dubins_dp.cpp
-
-    src/task/visibility_graph.cpp
-    src/task/orienteering.cpp
-    src/task/victim_mission.cpp
-    src/task/roadmap_algorithms.cpp
-    src/task/reference_generation.cpp
+    src/task/cell_decomposition.cpp          # exact + approximate cell decomposition
+    src/task/voronoi_roadmap.cpp             # Generalised Voronoi Diagram roadmap
+    src/task/tour_builder.cpp                # shared OP + Dubins pipeline
 )
 
 # Ensure message headers (e.g. loco_planning/Reference.h) are generated first.
-add_dependencies(map_receiver ${catkin_EXPORTED_TARGETS})
+add_dependencies(${PROJECT_NAME}_lib ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_lib
+    ${catkin_LIBRARIES}
+    Threads::Threads
+)
 
+add_executable(map_receiver src/map_receiver.cpp)
+add_dependencies(map_receiver ${catkin_EXPORTED_TARGETS})
 target_link_libraries(map_receiver
+    ${PROJECT_NAME}_lib
     ${catkin_LIBRARIES}
     Threads::Threads
 )
 
 #for benchmark
+add_executable(benchmark src/benchmark.cpp)
 add_dependencies(benchmark ${catkin_EXPORTED_TARGETS})
-
 target_link_libraries(benchmark
+    ${PROJECT_NAME}_lib
     ${catkin_LIBRARIES}
     Threads::Threads
 )
@@ -267,11 +255,40 @@ target_link_libraries(benchmark
 ## Testing ##
 #############
 
-## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_rescue_planner.cpp)
-# if(TARGET ${PROJECT_NAME}-test)
-#   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
-# endif()
+## Unit / integration test suite (gtest via catkin_add_gtest).
+##
+## HOW TO RUN:
+##   catkin_make run_tests          # build + run every test target
+##   catkin test rescue_planner     # (catkin_tools alternative)
+##   # or run the built binary directly:
+##   ./devel/lib/rescue_planner/test_rescue_planner
+##
+## WHAT test_rescue_planner COVERS (see test/test_rescue_planner.cpp):
+##   * comb::geometry_utils   - point-in-polygon, clearance collision, segClear,
+##                              inflated polygon vertices.
+##   * comb::visibility_graph - roadmap build, Dijkstra, path reconstruction.
+##   * comb::cell_decomposition - exact trapezoidal roadmap build & reachability.
+##   * comb::voronoi_roadmap  - distance transform, skeleton, GVD graph, clearance.
+##   * comb::orienteering     - Held-Karp exact DP + greedy heuristic + auto.
+##   * comb::dubins           - length bounds, straight/U-turn, endpoint accuracy.
+##   * pipeline integration   - visibility / cell_decomp / voronoi end-to-end on a
+##                              mock WorldModel (via comb::planTour).
+##   * collision_checker      - the sampling planners' raw (non-inflated) checks.
+##
+## LIMITATIONS:
+##   * No ros::init / ROS master is required: every test builds the geometry
+##     (comb::GeoMap) and a mock WorldModel directly and exercises the planning
+##     LOGIC through the shared modules (never the ROS publisher wrappers). The
+##     ROS planner classes themselves are validated by the launch-file smoke
+##     tests, not by gtest.
+catkin_add_gtest(test_rescue_planner test/test_rescue_planner.cpp)
+if(TARGET test_rescue_planner)
+  target_link_libraries(test_rescue_planner
+    ${PROJECT_NAME}_lib
+    ${catkin_LIBRARIES}
+    Threads::Threads
+  )
+endif()
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
