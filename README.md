@@ -42,23 +42,29 @@ roslaunch rescue_planner benchmark.launch planner_type:=...
 
 ### Building a custom / deterministic map
 
-The map (borders, obstacles, gate, victims) is described in
-`loco_nav/map_pkg/config/map_config.yaml`. On every launch (with the default
-`generate_new_config:=true`) `generate_config_file.py` reads this file and
-produces the resolved `full_config.yaml` that the spawn nodes consume.
+`loco_nav` is a **git submodule** (upstream `idra-lab/loco_nav`) that we do not
+have permission to commit to, so we never edit its map files. Instead our own map
+description lives in **`rescue_planner/config/map_config.yaml`** and the launch
+files point the map pipeline at it with the `map_env_params_file` argument
+(already the default in `rescue_map.launch` / `benchmark.launch`). The resolved
+`full_config.yaml` is also written under `rescue_planner/config/` (git-ignored),
+so the submodule stays clean.
 
-To get the **same map on every run** so you can compare planners fairly, pin all
-sources of randomness in `map_config.yaml`:
+On every launch (default `generate_new_config:=true`) loco_nav's
+`generate_config_file.py` reads our file and only invokes the RNG for elements
+that are *not* fully specified. So the way to get the **same map on every run**
+— without patching the submodule — is to leave **no randomness at all**:
 
 | Setting | Value for a deterministic map |
 |---------|-------------------------------|
-| `seed` (under `/**`) | any fixed integer, e.g. `42` (use `-1` for a fresh random map each launch) |
 | `n_obstacles` (`send_obstacles`) | `0` so only your `vect_*` obstacles are spawned |
 | `n_victims` (`send_victims`) | `0` so only your `vect_*` victims are spawned |
 | gate `x` / `y` (`send_gates`) | any **non-`(0.0, 0.0)`** position (a gate at `(0,0)` is placed randomly) |
+| every `vect_*` list | filled in explicitly, all lists in a section the same length |
 
-Then list your elements explicitly, keeping every `vect_*` list within a section
-the same length. Example (already shipped in `map_config.yaml`):
+With all elements explicit the generator makes zero random calls, so the map is
+identical every run (no seed required). Example (already shipped in
+`rescue_planner/config/map_config.yaml`):
 
 ~~~yaml
 /**/send_obstacles:
@@ -89,15 +95,22 @@ the same length. Example (already shipped in `map_config.yaml`):
   ros__parameters:
     map: hexagon
     dx: 10.0
-    seed: 42
+~~~
+
+You can also keep several map presets and pick one at launch time without
+touching any default:
+
+~~~
+roslaunch rescue_planner rescue_map.launch \
+  map_env_params_file:=$(rospack find rescue_planner)/config/my_other_map.yaml
 ~~~
 
 Notes / gotchas:
 - Every element (with its footprint) must lie **inside** the map polygon and must
   not overlap another element, the gate, or the robot at `(0,0)`; otherwise the
   generator aborts the launch with an `assert`.
-- The launch reads the config from the **install space**, so after editing the
-  YAML you must rebuild before it takes effect:
+- The launch resolves `$(find rescue_planner)` to the package, so after editing
+  the YAML rebuild before it takes effect:
   ~~~
   cd ros_ws
   catkin_make

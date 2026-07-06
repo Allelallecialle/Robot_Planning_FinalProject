@@ -1,0 +1,77 @@
+# =============================================================================
+#  rescue_planner OWN map description (overrides loco_nav's default)
+# -----------------------------------------------------------------------------
+#  WHY THIS FILE LIVES HERE
+#  `loco_nav` is a git SUBMODULE (upstream: idra-lab/loco_nav) that we cannot
+#  commit to. Instead of editing loco_nav/map_pkg/config/map_config.yaml, we keep
+#  our own copy here and tell the map pipeline to read it via the launch argument
+#     map_env_params_file:=$(find rescue_planner)/config/map_config.yaml
+#  This is already wired as the default in rescue_map.launch / benchmark.launch,
+#  so nothing inside the submodule is modified.
+#
+#  HOW TO GET A FULLY DETERMINISTIC, HAND-DESIGNED MAP
+#  generate_config_file.py (in loco_nav) reads this file and resolves every
+#  element. It only calls the RNG for elements that are NOT fully specified, so
+#  the trick to get the exact same map every launch WITHOUT patching loco_nav is
+#  to leave NO randomness at all:
+#
+#    1. n_obstacles: 0  -> no random obstacles added on top of the vect_* list.
+#    2. n_victims:   0  -> no random victims added on top of the vect_* list.
+#    3. gate x/y not (0,0) -> a gate at exactly (0,0) is placed randomly.
+#    4. list every element explicitly in the vect_* arrays.
+#
+#  With all four done, the generator makes zero random calls => identical map
+#  every run, no seed needed. (If you ever DO want reproducible *random* maps you
+#  would need a seed inside loco_nav's generator, which we can't commit here.)
+#
+#  Generator rules (an assert aborts the launch if violated):
+#    - every element + its footprint must be INSIDE the map polygon;
+#    - elements must not overlap each other, the gate, or the robot at (0,0);
+#    - all vect_* lists within a section must have the SAME length.
+#
+#  Obstacle footprints:
+#    - "box"      -> rectangle vect_dim_x by vect_dim_y, rotated by vect_yaw;
+#    - "cylinder" -> circle sized by vect_dim_x (vect_dim_y ignored).
+#
+#  After editing, rebuild so the launch picks up the file:
+#     cd ros_ws && catkin_make && source devel/setup.bash
+# =============================================================================
+
+/**/send_obstacles:
+  ros__parameters:
+    n_obstacles: 0                                # 0 => only the obstacles listed below (no random ones)
+    no_cylinders: false                           # only affects RANDOM obstacles
+    no_boxes: false                               # only affects RANDOM obstacles
+    max_size: 1.0                                 # only affects RANDOM obstacles
+    min_size: 0.5                                 # only affects RANDOM obstacles
+    vect_type: ["box", "box", "cylinder", "cylinder"]  # "box" or "cylinder"
+    vect_x: [3.0, -3.0, 0.0, -4.0]               # X position of each obstacle
+    vect_y: [3.0, 3.0, -2.0, -4.0]               # Y position of each obstacle
+    vect_yaw: [0.0, 0.5, 0.0, 0.0]               # Yaw (rad); ignored for cylinders
+    vect_dim_x: [1.0, 1.5, 1.0, 0.8]             # box width / cylinder size
+    vect_dim_y: [1.0, 1.0, 1.0, 0.8]             # box height; ignored for cylinders
+
+/**/send_gates:
+  ros__parameters:
+    use_namespace: false    # If true, one gate per Shelfino. Not yet implemented
+    x: [0.0]                # X position of the gate(s)
+    y: [-8.0]               # NON-(0,0) => fixed gate; (0,0) => random gate on a border
+    yaw: [1.5708]           # Yaw (rad) of the gate(s)
+
+/**/send_victims:
+  ros__parameters:
+    victims_activated: true      # If true, victims are spawned
+    n_victims: 0                 # 0 => only the victims listed below (no random ones)
+    min_weight: 10               # only affects RANDOM victims
+    max_weight: 500              # only affects RANDOM victims
+    vect_x: [4.0, -4.0, 2.0]     # X position of each victim
+    vect_y: [0.0, 0.0, 6.0]      # Y position of each victim
+    vect_weight: [100, 200, 150] # Weight of each victim
+    victims_timeout: 0           # Seconds to collect victims and reach the gate. 0 => auto
+
+/**:
+  ros__parameters:
+    map: hexagon              # "hexagon" or "rectangle"
+    dx: 10.0                    # hexagon edge length, or rectangle width
+    dy: 20.0                    # rectangle height (unused for hexagon)
+    max_timeout: 3              # NOT MAINTAINED

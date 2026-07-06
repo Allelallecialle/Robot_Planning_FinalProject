@@ -11,7 +11,11 @@
 
   <!-- Parameters -->
   <arg name="world_name" default="empty.world" />
-  <arg name="gen_map_params_file" default="$(find map_pkg)/config/full_config.yaml" />
+  <!-- Our OWN map description, kept in rescue_planner so we never edit the loco_nav submodule.
+       Override on the command line with map_env_params_file:=/path/to/your.yaml -->
+  <arg name="map_env_params_file" default="$(find rescue_planner)/config/map_config.yaml" />
+  <!-- Resolved config is written next to it (also inside rescue_planner) so the submodule stays clean -->
+  <arg name="gen_map_params_file" default="$(find rescue_planner)/config/full_config.yaml" />
   <arg name="elements_models_path" default="$(find map_pkg)/models" />
   <arg name="gazebo_models_path" default="$(find map_pkg)/worlds" />
 
@@ -29,6 +33,7 @@
 
   <!-- Spawn map -->
   <include file="$(find map_pkg)/launch/spawn_map.launch">
+    <arg name="map_env_params_file" value="$(arg map_env_params_file)" />
     <arg name="gen_map_params_file" value="$(arg gen_map_params_file)" />
     <arg name="gazebo_models_path" value="$(arg gazebo_models_path)" />
     <arg name="elements_models_path" value="$(arg elements_models_path)" />
