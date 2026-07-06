@@ -115,7 +115,8 @@ void RRT::step(){
         metrics_->roadmap_edges = edges;
     }
 
-    auto mission = computeVictimMission(roadmap_, *world_);
+    auto plan = planSamplingMission(roadmap_, *world_, world_->start.yaw);
+    const auto& mission = plan.mission;
     ROS_INFO("Mission feasible = %d", mission.feasible);
     ROS_INFO("Roadmap nodes = %lu", roadmap_.nodes.size());
     ROS_INFO("Graph path size = %lu", mission.graph_path.size());
@@ -137,7 +138,7 @@ void RRT::step(){
         metrics_->success = mission.feasible;
     }
 
-    reference_ = generateReferenceFromGraphPath(roadmap_, mission.graph_path, world_->start.yaw, *world_);
+    reference_ = plan.reference;
 
     ROS_INFO("Reference samples = %lu", reference_.size());
 

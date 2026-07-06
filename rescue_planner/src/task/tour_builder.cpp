@@ -114,6 +114,7 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
     std::vector<Vec2> pts = waypoints;
     std::vector<RefSample> ref;
     const int max_subdiv = 12;
+    bool complete = false;  // did the WHOLE trajectory (start..gate) stitch clear?
     for (int iter = 0; iter <= max_subdiv; ++iter) {
         const std::vector<double> ang = optimizeHeadings(
             pts, start_yaw, gate_yaw, k_max, dubins_discretizations);
@@ -141,10 +142,22 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
             t_off = ref.empty() ? 0.0 : ref.back().t + dt;
         }
 
-        if (bad_leg < 0) break;  // fully clear
+        if (bad_leg < 0) { complete = true; break; }  // fully clear
         const Vec2 mid{(pts[bad_leg].x + pts[bad_leg + 1].x) / 2.0,
                        (pts[bad_leg].y + pts[bad_leg + 1].y) / 2.0};
         pts.insert(pts.begin() + bad_leg + 1, mid);
+    }
+
+    // If a leg still clips an obstacle after all subdivisions, `ref` only holds
+    // the arcs BEFORE the offending leg -- a truncated path that stops short of
+    // the gate (or cuts the corner it failed to round). Publishing it would send
+    // the robot toward an obstacle and never reach the gate, so we reject the
+    // tour as infeasible instead of returning the partial reference.
+    if (!complete) {
+        out.reference.clear();
+        out.flyable_length = 0.0;
+        out.feasible = false;
+        return out;
     }
 
     out.reference = ref;

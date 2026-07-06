@@ -136,14 +136,38 @@ void VoronoiPlanner::plan() {
     }
 
     // ---------- 3-5) all-pairs Dijkstra + orienteering + Dubins --------------
-    const double Dmax =
+    // The orienteering budget bounds the STRAIGHT graph length, but the robot
+    // flies longer Dubins arcs; `dubins_safety` is only a fixed guess for that
+    // overhead. The real limit is that the FLYABLE trajectory must be coverable
+    // within the timeout: flyable_length <= v_max * victims_timeout.
+    double Dmax =
         comb::distanceBudget(world_->victims_timeout, v_max_, dubins_safety_);
+    const double flyable_budget =
+        (world_->victims_timeout > 0)
+            ? v_max_ * static_cast<double>(world_->victims_timeout)
+            : std::numeric_limits<double>::infinity();
 
     const double t_plan0 = nowMs();
     comb::TourResult tour =
         comb::planTour(vor.roadmap, map_, start_yaw, gate_yaw, values, Dmax,
                        op_method_, v_max_, k_max_, dt_, dubins_discretizations_,
                        sample_res_);
+
+    // Feedback: if the selected tour's flyable trajectory would overrun the
+    // timeout, tighten the graph budget in proportion to the observed overrun
+    // and re-plan. This drops the victims that do not actually fit in time, so
+    // the executed lap respects the timeout instead of exceeding it.
+    for (int budget_iter = 0;
+         budget_iter < 8 && std::isfinite(flyable_budget) && tour.feasible &&
+         !tour.reference.empty() && tour.flyable_length > flyable_budget;
+         ++budget_iter) {
+        Dmax *= (flyable_budget / tour.flyable_length) * 0.98;
+        ROS_INFO("[voronoi] flyable %.2f m > budget %.2f m; retrying with "
+                 "Dmax=%.2f m", tour.flyable_length, flyable_budget, Dmax);
+        tour = comb::planTour(vor.roadmap, map_, start_yaw, gate_yaw, values,
+                              Dmax, op_method_, v_max_, k_max_, dt_,
+                              dubins_discretizations_, sample_res_);
+    }
     const double planning_ms = nowMs() - t_plan0;
     total_value_ = tour.total_value;
 

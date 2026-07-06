@@ -10,7 +10,7 @@
 #include <iomanip>
 #include <ros/ros.h>
 
-VictimMissionResult computeVictimMission(RoadmapGraph& roadmap, const WorldModel& world){
+VictimMissionResult computeVictimMission(RoadmapGraph& roadmap, const WorldModel& world, double budgetOverride){
     VictimMissionResult mission;
     int startNode =
     roadmap::addTemporaryNode(roadmap, world.start.x, world.start.y, world);
@@ -55,8 +55,12 @@ VictimMissionResult computeVictimMission(RoadmapGraph& roadmap, const WorldModel
     // (A value > 1 would over-estimate the budget and the robot would miss the
     // timeout.)
     const double dubins_safety = 0.85;
+    // Use the caller-supplied budget when the flyable-time feedback loop is
+    // tightening it; otherwise fall back to the default timeout-derived budget.
     const double budget =
-        comb::distanceBudget(world.victims_timeout, v_max, dubins_safety);
+        (budgetOverride >= 0.0)
+            ? budgetOverride
+            : comb::distanceBudget(world.victims_timeout, v_max, dubins_safety);
 
     ROS_INFO("Victims timeout = %.2f",
              world.victims_timeout);

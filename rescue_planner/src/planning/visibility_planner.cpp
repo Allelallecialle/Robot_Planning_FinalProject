@@ -148,113 +148,137 @@ void VisibilityPlanner::plan() {
         for (int q = 0; q < P; ++q) D[p][q] = dist[poi_node[q]];
     }
 
-    // ---------- 4) orienteering: pick victim subset & order ------------------
-    // Budget: distance the robot can travel within the timeout at v_max,
-    // derated by `dubins_safety` to leave room for curvature overhead (the
-    // flyable Dubins path is always a bit longer than the straight graph path).
-    const double Dmax =
+    // ---------- 4-6) orienteering + Dubins with a FLYABLE-TIME feedback loop --
+    // The orienteering budget bounds the STRAIGHT graph length, but the robot
+    // flies longer Dubins arcs; `dubins_safety` is only a fixed guess for that
+    // overhead. The real limit is that the flyable trajectory must be coverable
+    // within the timeout (duration <= victims_timeout). So we pick victims,
+    // stitch the arcs, and if the trajectory overruns the timeout we tighten the
+    // graph budget in proportion and re-plan (dropping the victims that do not
+    // actually fit) instead of merely warning about the overrun.
+    double Dmax =
         comb::distanceBudget(world_->victims_timeout, v_max_, dubins_safety_);
+    const double flyable_budget =
+        (world_->victims_timeout > 0)
+            ? v_max_ * static_cast<double>(world_->victims_timeout)
+            : std::numeric_limits<double>::infinity();
 
-    comb::OrienteeringResult op =
-        comb::solveOrienteering(D, values, Dmax, op_method_);
-    total_value_ = op.total_value;
-    ROS_INFO("[visibility] orienteering: %s, selected %d/%d victims, value=%.1f, "
-             "graph length=%.2f m (budget=%.2f m)",
-             op.feasible ? "FEASIBLE" : "INFEASIBLE",
-             static_cast<int>(op.victim_order.size()), n, op.total_value,
-             op.total_length, Dmax);
-    if (!op.feasible) {
-        ROS_WARN("[visibility] cannot reach the gate within budget; aborting.");
-        const double planning_ms = nowMs() - t_plan0;
-        if (metrics_) {
-            metrics_->victims = 0;
-            metrics_->path_length = 0.0;
-            metrics_->score = 0;
-            metrics_->success = false;
-        }
-        publishStats(roadmap_ms, planning_ms, 0.0, 0.0, 0);
-        return;
-    }
-
-    // ---------- 5) expand POI order into a geometric waypoint polyline -------
-    std::vector<int> poi_order;
-    poi_order.push_back(0);                       // start
-    for (int vi : op.victim_order) poi_order.push_back(vi + 1);
-    poi_order.push_back(P - 1);                   // gate
-
-    tour_nodes_.clear();
-    for (size_t k = 0; k + 1 < poi_order.size(); ++k) {
-        const int a = poi_order[k];
-        const int b = poi_order[k + 1];
-        std::vector<int> seg =
-            comb::reconstructPath(poi_node[a], poi_node[b], prevs[a]);
-        if (seg.empty()) {
-            ROS_WARN("[visibility] missing graph path between POIs %d-%d", a, b);
-            continue;
-        }
-        for (size_t t = (tour_nodes_.empty() ? 0 : 1); t < seg.size(); ++t)
-            tour_nodes_.push_back(seg[t]);
-    }
-
+    comb::OrienteeringResult op;
     std::vector<comb::Vec2> waypoints;
-    for (int idx : tour_nodes_) {
-        const comb::Vec2 p = graph_.nodes[idx];
-        if (waypoints.empty() || comb::dist(waypoints.back(), p) > 1e-6)
-            waypoints.push_back(p);
-    }
-    if (waypoints.size() < 2) {
-        ROS_WARN("[visibility] degenerate waypoint list; aborting.");
-        return;
-    }
-
-    // ---------- 6) heading DP + Dubins stitching with clearance re-check -----
-    // Intermediate (victim) headings are free; start/gate headings are fixed.
-    // After stitching, each curved arc is re-sampled and verified against the
-    // ORIGINAL obstacles (real clearance), because the Dubins arcs can bulge
-    // outside the straight visibility corridor. If a leg clips, we insert the
-    // midpoint of the offending straight segment (guaranteed clear, since it
-    // came from the visibility graph) and re-optimise -- this shrinks the arc.
-    std::vector<comb::Vec2> pts = waypoints;
     std::vector<comb::RefSample> ref;
-    const int max_subdiv = 12;
-    for (int iter = 0; iter <= max_subdiv; ++iter) {
-        const std::vector<double> ang = comb::optimizeHeadings(
-            pts, start_yaw, gate_yaw, k_max_, dubins_discretizations_);
+    double traj_len = 0.0;
 
-        ref.clear();
-        double t_off = 0.0;
-        int bad_leg = -1;
-        for (size_t i = 0; i + 1 < pts.size(); ++i) {
-            const comb::DubinsCurve c = comb::dubinsShortestPath(
-                pts[i].x, pts[i].y, ang[i], pts[i + 1].x, pts[i + 1].y,
-                ang[i + 1], k_max_);
-            if (!c.valid) { bad_leg = static_cast<int>(i); break; }
-
-            std::vector<comb::RefSample> leg;
-            comb::appendDiscretizedDubins(c, v_max_, dt_, t_off, leg);
-
-            bool clear = true;
-            for (const auto& s : leg) {
-                if (comb::pointInCollision({s.x, s.y}, map_)) { clear = false; break; }
+    for (int budget_iter = 0; budget_iter < 8; ++budget_iter) {
+        // ----- orienteering: pick victim subset & order -----
+        op = comb::solveOrienteering(D, values, Dmax, op_method_);
+        total_value_ = op.total_value;
+        ROS_INFO("[visibility] orienteering: %s, selected %d/%d victims, "
+                 "value=%.1f, graph length=%.2f m (budget=%.2f m)",
+                 op.feasible ? "FEASIBLE" : "INFEASIBLE",
+                 static_cast<int>(op.victim_order.size()), n, op.total_value,
+                 op.total_length, Dmax);
+        if (!op.feasible) {
+            ROS_WARN("[visibility] cannot reach the gate within budget; aborting.");
+            const double planning_ms = nowMs() - t_plan0;
+            if (metrics_) {
+                metrics_->victims = 0;
+                metrics_->path_length = 0.0;
+                metrics_->score = 0;
+                metrics_->success = false;
             }
-            if (!clear) { bad_leg = static_cast<int>(i); break; }
-
-            // Append (skip first sample of non-initial legs to avoid duplicates).
-            for (size_t s = (i == 0 ? 0 : 1); s < leg.size(); ++s)
-                ref.push_back(leg[s]);
-            t_off = ref.empty() ? 0.0 : ref.back().t + dt_;
+            publishStats(roadmap_ms, planning_ms, 0.0, 0.0, 0);
+            return;
         }
 
-        if (bad_leg < 0) break;  // fully clear
-        const comb::Vec2 mid{(pts[bad_leg].x + pts[bad_leg + 1].x) / 2.0,
-                             (pts[bad_leg].y + pts[bad_leg + 1].y) / 2.0};
-        pts.insert(pts.begin() + bad_leg + 1, mid);
-        if (iter == max_subdiv)
-            ROS_WARN("[visibility] residual arc collision after %d subdivisions",
-                     max_subdiv);
+        // ----- expand POI order into a geometric waypoint polyline -----
+        std::vector<int> poi_order;
+        poi_order.push_back(0);                       // start
+        for (int vi : op.victim_order) poi_order.push_back(vi + 1);
+        poi_order.push_back(P - 1);                   // gate
+
+        tour_nodes_.clear();
+        for (size_t k = 0; k + 1 < poi_order.size(); ++k) {
+            const int a = poi_order[k];
+            const int b = poi_order[k + 1];
+            std::vector<int> seg =
+                comb::reconstructPath(poi_node[a], poi_node[b], prevs[a]);
+            if (seg.empty()) {
+                ROS_WARN("[visibility] missing graph path between POIs %d-%d", a, b);
+                continue;
+            }
+            for (size_t t = (tour_nodes_.empty() ? 0 : 1); t < seg.size(); ++t)
+                tour_nodes_.push_back(seg[t]);
+        }
+
+        waypoints.clear();
+        for (int idx : tour_nodes_) {
+            const comb::Vec2 p = graph_.nodes[idx];
+            if (waypoints.empty() || comb::dist(waypoints.back(), p) > 1e-6)
+                waypoints.push_back(p);
+        }
+        if (waypoints.size() < 2) {
+            ROS_WARN("[visibility] degenerate waypoint list; aborting.");
+            return;
+        }
+
+        // ----- heading DP + Dubins stitching with clearance re-check -----
+        // Intermediate (victim) headings are free; start/gate headings are
+        // fixed. After stitching, each curved arc is re-sampled and verified
+        // against the ORIGINAL obstacles (real clearance): if a leg clips, we
+        // insert the midpoint of the offending straight segment (guaranteed
+        // clear) and re-optimise, which shrinks the bulging arc.
+        std::vector<comb::Vec2> pts = waypoints;
+        const int max_subdiv = 12;
+        for (int iter = 0; iter <= max_subdiv; ++iter) {
+            const std::vector<double> ang = comb::optimizeHeadings(
+                pts, start_yaw, gate_yaw, k_max_, dubins_discretizations_);
+
+            ref.clear();
+            double t_off = 0.0;
+            int bad_leg = -1;
+            for (size_t i = 0; i + 1 < pts.size(); ++i) {
+                const comb::DubinsCurve c = comb::dubinsShortestPath(
+                    pts[i].x, pts[i].y, ang[i], pts[i + 1].x, pts[i + 1].y,
+                    ang[i + 1], k_max_);
+                if (!c.valid) { bad_leg = static_cast<int>(i); break; }
+
+                std::vector<comb::RefSample> leg;
+                comb::appendDiscretizedDubins(c, v_max_, dt_, t_off, leg);
+
+                bool clear = true;
+                for (const auto& s : leg) {
+                    if (comb::pointInCollision({s.x, s.y}, map_)) { clear = false; break; }
+                }
+                if (!clear) { bad_leg = static_cast<int>(i); break; }
+
+                // Append (skip first sample of non-initial legs to avoid dups).
+                for (size_t s = (i == 0 ? 0 : 1); s < leg.size(); ++s)
+                    ref.push_back(leg[s]);
+                t_off = ref.empty() ? 0.0 : ref.back().t + dt_;
+            }
+
+            if (bad_leg < 0) break;  // fully clear
+            const comb::Vec2 mid{(pts[bad_leg].x + pts[bad_leg + 1].x) / 2.0,
+                                 (pts[bad_leg].y + pts[bad_leg + 1].y) / 2.0};
+            pts.insert(pts.begin() + bad_leg + 1, mid);
+            if (iter == max_subdiv)
+                ROS_WARN("[visibility] residual arc collision after %d subdivisions",
+                         max_subdiv);
+        }
+
+        traj_len = v_max_ * (ref.empty() ? 0.0 : ref.back().t);
+
+        // Accept if there is no time limit, the trajectory is empty, or it fits
+        // the timeout. Otherwise tighten the graph budget and re-plan.
+        if (!std::isfinite(flyable_budget) || ref.empty() ||
+            traj_len <= flyable_budget)
+            break;
+        const double scaled = Dmax * (flyable_budget / traj_len) * 0.98;
+        ROS_INFO("[visibility] flyable duration %.1f s > timeout %d s; retrying "
+                 "with Dmax=%.2f m", ref.back().t, world_->victims_timeout, scaled);
+        Dmax = scaled;
     }
 
-    const double traj_len = v_max_ * (ref.empty() ? 0.0 : ref.back().t);
     const double planning_ms = nowMs() - t_plan0;
     ROS_INFO("[visibility] planning done in %.2f ms | flyable length=%.2f m, "
              "duration=%.1f s | TOTAL VALUE=%.1f",
@@ -262,7 +286,7 @@ void VisibilityPlanner::plan() {
              total_value_);
     if (world_->victims_timeout > 0 &&
         (!ref.empty() && ref.back().t > world_->victims_timeout))
-        ROS_WARN("[visibility] flyable duration exceeds timeout (%.1f > %d s)!",
+        ROS_WARN("[visibility] flyable duration still exceeds timeout (%.1f > %d s)!",
                  ref.back().t, world_->victims_timeout);
 
     {

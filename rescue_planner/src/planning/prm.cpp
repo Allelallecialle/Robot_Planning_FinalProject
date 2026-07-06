@@ -107,7 +107,8 @@ void PRM::step(){
     }
     // -------------------
 
-    auto mission = computeVictimMission(roadmap_, *world_);
+    auto plan = planSamplingMission(roadmap_, *world_, world_->start.yaw);
+    const auto& mission = plan.mission;
     if(!mission.feasible){
         ROS_WARN("No feasible rescue mission found.");
         return;
@@ -128,7 +129,7 @@ void PRM::step(){
     }
     // -------------------
 
-    reference_ = generateReferenceFromGraphPath(roadmap_, mission.graph_path, world_->start.yaw, *world_);
+    reference_ = plan.reference;
     ROS_INFO("Reference samples = %lu", reference_.size());
 
     publishReference(reference_);
