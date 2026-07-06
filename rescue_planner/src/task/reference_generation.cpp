@@ -109,7 +109,12 @@ SamplingMissionPlan planSamplingMission(RoadmapGraph& roadmap, const WorldModel&
     const double dubins_safety = 0.85;
     double budget = comb::distanceBudget(world.victims_timeout, v_max, dubins_safety);
 
-    plan.mission = computeVictimMission(roadmap, world, budget);
+    // Build the POI context (adds the start/victim/gate nodes and the distance
+    // matrix) EXACTLY ONCE, so the re-solves below do NOT grow the roadmap: the
+    // sampled node count stays exactly what the planner generated.
+    MissionContext ctx = buildMissionContext(roadmap, world);
+
+    plan.mission = solveMissionWithBudget(ctx, budget);
     if(!plan.mission.feasible)
         return plan;
     plan.reference =
@@ -118,7 +123,9 @@ SamplingMissionPlan planSamplingMission(RoadmapGraph& roadmap, const WorldModel&
     // Flyable-time feedback: reference.back().t is the trajectory DURATION (the
     // arcs are sampled at v_max), so it overruns the timeout when it exceeds
     // world.victims_timeout. Tighten the graph budget in proportion and re-select
-    // victims until the flyable lap fits (or the tour becomes infeasible).
+    // victims until the flyable lap fits (or the tour becomes infeasible). This
+    // only re-solves the orienteering on the fixed context -- it never re-samples
+    // or adds nodes.
     if(world.victims_timeout > 0){
         for(int it = 0;
             it < 8 && plan.mission.feasible && !plan.reference.empty() &&
@@ -129,7 +136,7 @@ SamplingMissionPlan planSamplingMission(RoadmapGraph& roadmap, const WorldModel&
             ROS_INFO("[sampling] flyable %.1f s > timeout %d s; retrying with "
                      "budget=%.2f m", plan.reference.back().t,
                      world.victims_timeout, budget);
-            plan.mission = computeVictimMission(roadmap, world, budget);
+            plan.mission = solveMissionWithBudget(ctx, budget);
             if(!plan.mission.feasible)
                 break;
             plan.reference =

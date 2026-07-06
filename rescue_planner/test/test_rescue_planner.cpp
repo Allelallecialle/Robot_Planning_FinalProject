@@ -553,24 +553,30 @@ TEST(Pipeline, VisibilityVisitsVictimWithFixedBudget) {
                           kVictimBudgetDmax, /*require_victim=*/true);
 }
 
-TEST(Pipeline, CellDecompExceeds30sBudgetOnMockWorld) {
+TEST(Pipeline, CellDecompReachesGateWithin30sBudget) {
     const comb::GeoMap map = makeGeoMap();
     const comb::CellDecomposition d =
         comb::buildCellDecomposition(map, kStart, victims(), kGate, 0.05);
-    // Roadmap exists and POIs connect, but the graph tour is too long for 30 s.
+    // The RAW cell-boundary graph tour is much longer than 30 s allows, but the
+    // executed path is line-of-sight simplified, and start->gate is a clear ~7 m
+    // straight shot (< 7.65 m budget). planTour budgets against the simplified
+    // length, so the tour is feasible to the gate (no victim: it needs ~13.9 m).
     const comb::TourResult tour = runPipeline(d.roadmap, map, kTestDmax);
-    EXPECT_FALSE(tour.feasible);
-    EXPECT_TRUE(tour.reference.empty());
+    checkTourWithinBudget(tour, kTestDmax);
+    EXPECT_TRUE(tour.victim_order.empty());
 }
 
-TEST(Pipeline, VoronoiExceeds30sBudgetOnMockWorld) {
+TEST(Pipeline, VoronoiReachesGateWithin30sBudget) {
     const comb::GeoMap map = makeGeoMap();
     const comb::VoronoiRoadmap vor =
         comb::buildVoronoiRoadmap(map, kStart, victims(), kGate, 0.05, 20, 0.05);
-    // GVD graph tour (~7.9 m) slightly exceeds the 30 s derated budget (7.65 m).
+    // The RAW GVD (medial-axis) tour (~7.9 m) exceeds the 7.65 m budget, but the
+    // executed path is line-of-sight simplified back to the clear ~7 m straight
+    // start->gate shot, so planTour (budgeting against the simplified length)
+    // reaches the gate within budget (no victim fits in 7.65 m).
     const comb::TourResult tour = runPipeline(vor.roadmap, map, kTestDmax);
-    EXPECT_FALSE(tour.feasible);
-    EXPECT_TRUE(tour.reference.empty());
+    checkTourWithinBudget(tour, kTestDmax);
+    EXPECT_TRUE(tour.victim_order.empty());
 }
 
 // ============================================================================

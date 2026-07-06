@@ -1,5 +1,6 @@
 #include "task/tour_builder.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <limits>
 
@@ -57,9 +58,37 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
     std::vector<std::vector<double>> D(P, std::vector<double>(P, 0.0));
     std::vector<std::vector<int>> prevs(P);  // Dijkstra predecessor per POI
     for (int p = 0; p < P; ++p) {
-        std::vector<double> dist;
-        dijkstra(graph, poi_node[p], dist, prevs[p]);
-        for (int q = 0; q < P; ++q) D[p][q] = dist[poi_node[q]];
+        std::vector<double> dgraph;
+        dijkstra(graph, poi_node[p], dgraph, prevs[p]);
+        for (int q = 0; q < P; ++q) {
+            if (p == q) { D[p][q] = 0.0; continue; }
+            const double raw = dgraph[poi_node[q]];
+            if (!std::isfinite(raw)) { D[p][q] = raw; continue; }  // unreachable
+
+            // The cost the orienteering solver sees MUST match what the robot
+            // actually travels. The raw roadmap shortest path hugs the medial
+            // axis (Voronoi) or steps along cell boundaries (cell decomposition),
+            // so its length overestimates the travelled distance -- but before
+            // stitching we line-of-sight simplify that path (see
+            // simplifyLineOfSight / step 3), shortcutting across free space.
+            // Budgeting the OP against the RAW length therefore makes victim
+            // selection needlessly conservative (few victims fit, huge timeouts
+            // needed). So we budget against the SIMPLIFIED polyline length, i.e.
+            // the distance the robot really flies. On the visibility graph the
+            // shortest path is already near-straight, so this is a no-op there.
+            const std::vector<int> seg =
+                reconstructPath(poi_node[p], poi_node[q], prevs[p]);
+            if (seg.size() < 2) { D[p][q] = raw; continue; }
+            std::vector<Vec2> segpts;
+            segpts.reserve(seg.size());
+            for (int idx : seg) segpts.push_back(graph.nodes[idx]);
+            const std::vector<Vec2> simp =
+                simplifyLineOfSight(segpts, map, sample_res);
+            double len = 0.0;
+            for (std::size_t k = 0; k + 1 < simp.size(); ++k)
+                len += dist(simp[k], simp[k + 1]);
+            D[p][q] = len;
+        }
     }
 
     // ---------- 2) orienteering: pick victim subset & order -------------------
