@@ -254,7 +254,7 @@ int main(int argc, char** argv){
                 metrics.planning_time =
                     (ros::WallTime::now() - t0).toSec();
 
-                metrics.success = true;
+                // `metrics.success` set by the planner itself (true only when feasible rescue tour/path was found); do not force it here.
 
                 saveMetrics(metrics);
 

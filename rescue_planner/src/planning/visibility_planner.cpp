@@ -122,6 +122,15 @@ void VisibilityPlanner::plan() {
     ROS_INFO("[visibility] roadmap: %d nodes built in %.2f ms",
              static_cast<int>(graph_.nodes.size()), roadmap_ms);
 
+    if (metrics_) {
+        metrics_->roadmap_nodes = static_cast<int>(graph_.nodes.size());
+        int edges = 0;
+        for (int i = 0; i < static_cast<int>(graph_.adj.size()); ++i)
+            for (int j : graph_.adj[i])
+                if (j > i) ++edges;
+        metrics_->roadmap_edges = edges;
+    }
+
     // ---------- 3) all-pairs shortest distances between POIs ------------------
     const double t_plan0 = nowMs();
     std::vector<int> poi_node;  // graph index of each POI
@@ -157,6 +166,11 @@ void VisibilityPlanner::plan() {
     if (!op.feasible) {
         ROS_WARN("[visibility] cannot reach the gate within budget; aborting.");
         const double planning_ms = nowMs() - t_plan0;
+        if (metrics_) {
+            metrics_->victims = 0;
+            metrics_->path_length = 0.0;
+            metrics_->success = false;
+        }
         publishStats(roadmap_ms, planning_ms, 0.0, 0.0, 0);
         return;
     }
@@ -254,6 +268,11 @@ void VisibilityPlanner::plan() {
         std::lock_guard<std::mutex> lk(data_mtx_);
         waypoints_ = waypoints;
         reference_ = ref;
+    }
+    if (metrics_) {
+        metrics_->victims = static_cast<int>(op.victim_order.size());
+        metrics_->path_length = traj_len;
+        metrics_->success = true;
     }
     publishStats(roadmap_ms, planning_ms, total_value_, traj_len,
                  static_cast<int>(op.victim_order.size()));

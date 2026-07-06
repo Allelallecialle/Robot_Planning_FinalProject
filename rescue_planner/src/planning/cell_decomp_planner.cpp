@@ -140,6 +140,15 @@ void CellDecompPlanner::plan() {
              static_cast<int>(decomp.roadmap.nodes.size()),
              static_cast<int>(decomp.cells.size()), roadmap_ms);
 
+    if (metrics_) {
+        metrics_->roadmap_nodes = static_cast<int>(decomp.roadmap.nodes.size());
+        int edges = 0;
+        for (int i = 0; i < static_cast<int>(decomp.roadmap.adj.size()); ++i)
+            for (int j : decomp.roadmap.adj[i])
+                if (j > i) ++edges;
+        metrics_->roadmap_edges = edges;
+    }
+
     // ---------- 3-5) all-pairs Dijkstra + orienteering + Dubins --------------
     double Dmax = std::numeric_limits<double>::infinity();
     if (world_->victims_timeout > 0)
@@ -167,6 +176,11 @@ void CellDecompPlanner::plan() {
             waypoints_.clear();
             reference_.clear();
         }
+        if (metrics_) {
+            metrics_->victims = 0;
+            metrics_->path_length = 0.0;
+            metrics_->success = false;
+        }
         publishStats(roadmap_ms, planning_ms, 0.0, 0.0, 0);
         // Publish one finished reference at the start so the controller stops.
         loco_planning::Reference msg;
@@ -184,6 +198,11 @@ void CellDecompPlanner::plan() {
         std::lock_guard<std::mutex> lk(data_mtx_);
         waypoints_ = tour.waypoints;
         reference_ = tour.reference;
+    }
+    if (metrics_) {
+        metrics_->victims = static_cast<int>(tour.victim_order.size());
+        metrics_->path_length = tour.flyable_length;
+        metrics_->success = true;
     }
     publishStats(roadmap_ms, planning_ms, total_value_, tour.flyable_length,
                  static_cast<int>(tour.victim_order.size()));
