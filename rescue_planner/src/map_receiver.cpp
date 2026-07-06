@@ -93,6 +93,15 @@ int main(int argc, char** argv){
     std::string robot_name;
     pnh.param<std::string>("robot_name", robot_name, std::string("limo0"));
 
+    // Robot clearance for the sampling collision checker (keeps the robot body
+    // clear of obstacles and walls). Mirrors the combinatorial planners'
+    // clearance = robot_radius + safety_margin. Set to 0 for a point robot.
+    double robot_radius = 0.20;
+    double safety_margin = 0.10;
+    pnh.param("robot_radius", robot_radius, robot_radius);
+    pnh.param("safety_margin", safety_margin, safety_margin);
+    world.clearance = robot_radius + safety_margin;
+
     ros::Subscriber obstacle_sub =
     nh.subscribe(
         "/obstacles",

@@ -35,6 +35,12 @@ public:
     Pose start;
     int victims_timeout = 0;   // seconds, from /victims_timeout (0 => unlimited)
 
+    // Robot clearance (m) used by the sampling collision checker to keep the
+    // robot's physical size clear of obstacles and walls. Defaults to 0 so the
+    // raw point-robot checker (and its unit tests) is unchanged; map_receiver
+    // sets it at runtime to robot_radius + safety_margin.
+    double clearance = 0.0;
+
     // "first message arrived" flags so the combinatorial planner does not plan
     // on a half-initialised world.
     bool obstacles_ready = false;

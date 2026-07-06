@@ -129,7 +129,7 @@ void RRT::step(){
         metrics_->success = mission.feasible;
     }
 
-    reference_ = generateReferenceFromGraphPath(roadmap_, mission.graph_path, world_->start.yaw);
+    reference_ = generateReferenceFromGraphPath(roadmap_, mission.graph_path, world_->start.yaw, *world_);
 
     ROS_INFO("Reference samples = %lu", reference_.size());
 

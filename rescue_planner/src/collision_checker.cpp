@@ -1,20 +1,64 @@
 #include "collision_checker.hpp"
 #include <cmath>
+#include <algorithm>
 
-bool pointInsideCylinder(double x, double y, const WorldModel::Obstacle& obs){
+// Shortest distance from point (px,py) to the segment [(ax,ay),(bx,by)].
+static double pointToSegmentDistance(double px, double py,
+                                     double ax, double ay,
+                                     double bx, double by){
+    double dx = bx - ax;
+    double dy = by - ay;
+    double len2 = dx*dx + dy*dy;
+
+    if(len2 < 1e-12)
+        return std::sqrt((px-ax)*(px-ax) + (py-ay)*(py-ay));
+
+    double t = ((px-ax)*dx + (py-ay)*dy) / len2;
+    t = std::max(0.0, std::min(1.0, t));
+
+    double cx = ax + t*dx;
+    double cy = ay + t*dy;
+
+    return std::sqrt((px-cx)*(px-cx) + (py-cy)*(py-cy));
+}
+
+// Minimum distance from (x,y) to the boundary (edges) of a polygon.
+static double distanceToPolygonBoundary(double x, double y,
+                                        const geometry_msgs::Polygon& polygon){
+    double best = 1e18;
+    int n = polygon.points.size();
+
+    for(int i=0;i<n;i++){
+        int j = (i+1)%n;
+        best = std::min(best,
+                        pointToSegmentDistance(x, y,
+                                               polygon.points[i].x, polygon.points[i].y,
+                                               polygon.points[j].x, polygon.points[j].y));
+    }
+    return best;
+}
+
+// A disk of radius `clearance` centred at (x,y) collides with the cylinder when
+// the centre is within (obs.radius + clearance) of the cylinder centre.
+bool pointInsideCylinder(double x, double y, const WorldModel::Obstacle& obs, double clearance){
     double cx = obs.polygon.points[0].x;
     double cy = obs.polygon.points[0].y;
 
     double dx = x - cx;
     double dy = y - cy;
 
-    return dx*dx + dy*dy <= obs.radius*obs.radius;
+    double r = obs.radius + clearance;
+
+    return dx*dx + dy*dy <= r*r;
 }
 
-bool pointInsideBox(double x, double y, const WorldModel::Obstacle& obs){
+// True if (x,y) is inside the (CCW) box, or within `clearance` of one of its
+// edges (i.e. the robot disk would overlap the box).
+bool pointInsideBox(double x, double y, const WorldModel::Obstacle& obs, double clearance){
     const auto& pts = obs.polygon.points;
     int n = pts.size();
 
+    bool inside = true;
     for(int i=0; i<n; i++){
         int j = (i+1)%n;
 
@@ -27,10 +71,18 @@ bool pointInsideBox(double x, double y, const WorldModel::Obstacle& obs){
         double cross = ex*py - ey*px;
 
         if(cross < 0){
-            return false;
+            inside = false;
+            break;
         }
     }
-    return true;
+
+    if(inside)
+        return true;
+
+    if(clearance <= 0.0)
+        return false;
+
+    return distanceToPolygonBoundary(x, y, obs.polygon) <= clearance;
 }
 
 bool isInsideMap(double x,double y,const geometry_msgs::Polygon& polygon){
@@ -52,18 +104,25 @@ bool isInsideMap(double x,double y,const geometry_msgs::Polygon& polygon){
 }
 
 bool isPointValid(double x, double y, const WorldModel& world){
+    const double clearance = world.clearance;
+
+    // Must be inside the map, and (with clearance) far enough from every wall so
+    // the robot's body does not stick out of the arena.
     if(!isInsideMap(x, y, world.borders)){
+        return false;
+    }
+    if(clearance > 0.0 && distanceToPolygonBoundary(x, y, world.borders) < clearance){
         return false;
     }
 
     for(const auto& obs : world.obstacles){
         if(obs.radius > 0){
-            if(pointInsideCylinder(x,y,obs)){
+            if(pointInsideCylinder(x,y,obs,clearance)){
                 return false;
             }
         }
         else{
-            if(pointInsideBox(x,y,obs)){
+            if(pointInsideBox(x,y,obs,clearance)){
                 return false;
             }
         }
