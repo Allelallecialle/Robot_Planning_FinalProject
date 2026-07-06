@@ -15,45 +15,27 @@ catkin_make
 source devel/setup.bash
 ~~~
 
-## Running
-
-### To run individual planners
-
-Open a new terminal in the container with:
+If needed, open a new terminal in the container with:
 ~~~
 dock-other
 ~~~
-Run the combinatorial (visibility-graph) planner:
-~~~
-roslaunch rescue_planner rescue_map.launch planner_type:=visibility
-~~~
-or directly as a node (after the simulation/map are up):
-~~~
-rosrun rescue_planner map_receiver _planner_type:=visibility
+
+## Running
+
+### To run individual planners
 ~~~
 Run the sample-based planners with roslaunch file. Default version with rrt:
 ~~~
 roslaunch rescue_planner rescue_map.launch
 ~~~
-or input the planner parameter (prm, rrt, rrt_star):
+or input the planner parameter (prm, rrt, rrt_star, visibility, cell_decomp, cell_decomp_approx, voronoi):
 ~~~
 roslaunch rescue_planner rescue_map.launch planner_type:=prm
 ~~~
 
-### Combinatorial planner overview
-`planner_type:=visibility` builds an exact visibility graph over the
-clearance-inflated obstacle corners plus the robot start, victim centres and the
-gate; runs Dijkstra to get pairwise distances; solves an Orienteering Problem
-(Held-Karp DP for small instances, greedy + 2-opt fallback) to choose which
-victims to rescue within the `/victims_timeout` budget; then stitches Dubins
-manoeuvres (with per-victim heading optimisation and curved-arc clearance
-re-checking) and publishes the trajectory as `loco_planning/Reference` on
-`/<robot>/ref`. Roadmap time, planning time and the selected total value are
-logged and published on `/visibility_planner/stats`.
-
 ### To run the simulation with the Benchmark
-Choose the planner type as in the previous cases presented. 
-The data about the simulation is saved in the `benchmark.csv` in the `test_benchmark` folder.
+Choose the planner type as in the previous case presented. 
+The data about the simulation will be saved in the `benchmark.csv` in the `test_benchmark` folder.
 ~~~
 roslaunch rescue_planner benchmark.launch planner_type:=...
 ~~~
@@ -115,7 +97,7 @@ verifies victim collection when the graph tour is long enough to require it.
 | Maximum-clearance roadmap | `comb::voronoi_roadmap` |
 | Victim selection | `comb::orienteering` |
 | Flyable paths | `comb::dubins`, `comb::planTour` |
-| Sampling collision checks | `collision_checker` (teammate code, tests only) |
+| Sampling collision checks | `collision_checker` |
 
 The ROS planner nodes (`map_receiver`, launch files) are validated separately by running
 `roslaunch rescue_planner rescue_map.launch planner_type:=...` as described above.
