@@ -68,6 +68,14 @@ void RRTStar::step(){
     if(planning_done)
         return;
 
+    // Do not sample/connect until the whole world has arrived. Otherwise nodes
+    // and edges built in the window before /obstacles is received ignore the
+    // obstacles and the roadmap ends up with edges that cut through them.
+    if(!world_->obstacles_ready || !world_->victims_ready ||
+       !world_->start_ready || !world_->timeout_ready ||
+       world_->gates.empty() || world_->borders.points.size() < 3)
+        return;
+
     SamplePoint p = sampleRandomPoint(*world_);
     int nearest = nearestNode(p.x,p.y);
     RRTNode node = steer(tree[nearest], p.x, p.y, 1.0);

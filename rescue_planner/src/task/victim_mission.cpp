@@ -49,7 +49,12 @@ VictimMissionResult computeVictimMission(RoadmapGraph& roadmap, const WorldModel
         values.push_back(v.value);
     }
     const double v_max = 0.3;
-    const double dubins_safety = 1.15;
+    // Derating factor in (0, 1]: the flyable Dubins trajectory is always LONGER
+    // than the straight roadmap path, so the graph-distance budget must be
+    // SMALLER than v_max * timeout. Matches the combinatorial planners (0.85).
+    // (A value > 1 would over-estimate the budget and the robot would miss the
+    // timeout.)
+    const double dubins_safety = 0.85;
     const double budget =
         comb::distanceBudget(world.victims_timeout, v_max, dubins_safety);
 
