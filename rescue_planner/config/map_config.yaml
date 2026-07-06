@@ -3,9 +3,9 @@
 # -----------------------------------------------------------------------------
 #  WHY THIS FILE LIVES HERE
 #  `loco_nav` is a git SUBMODULE (upstream: idra-lab/loco_nav) that we cannot
-#  commit to. Instead of editing loco_nav/map_pkg/config/map_config.yaml, we keep
+#  commit to. Instead of editing loco_nav/map_pkg/config/map_config_ORIGINAL.yaml, we keep
 #  our own copy here and tell the map pipeline to read it via the launch argument
-#     map_env_params_file:=$(find rescue_planner)/config/map_config.yaml
+#     map_env_params_file:=$(find rescue_planner)/config/map_config_ORIGINAL.yaml
 #  This is already wired as the default in rescue_map.launch / benchmark.launch,
 #  so nothing inside the submodule is modified.
 #
@@ -54,9 +54,9 @@
 /**/send_gates:
   ros__parameters:
     use_namespace: false    # If true, one gate per Shelfino. Not yet implemented
-    x: [0.0]                # X position of the gate(s)
-    y: [-8.0]               # NON-(0,0) => fixed gate; (0,0) => random gate on a border
-    yaw: [1.5708]           # Yaw (rad) of the gate(s)
+    x: [-6.667334]               # X position of the gate(s)
+    y: [-4.572347]              # NON-(0,0) => fixed gate; (0,0) => random gate on a border
+    yaw: [3.665191]           # Yaw (rad) of the gate(s)
 
 /**/send_victims:
   ros__parameters:
