@@ -40,6 +40,74 @@ The data about the simulation will be saved in the `benchmark.csv` in the `test_
 roslaunch rescue_planner benchmark.launch planner_type:=...
 ~~~
 
+### Building a custom / deterministic map
+
+The map (borders, obstacles, gate, victims) is described in
+`loco_nav/map_pkg/config/map_config.yaml`. On every launch (with the default
+`generate_new_config:=true`) `generate_config_file.py` reads this file and
+produces the resolved `full_config.yaml` that the spawn nodes consume.
+
+To get the **same map on every run** so you can compare planners fairly, pin all
+sources of randomness in `map_config.yaml`:
+
+| Setting | Value for a deterministic map |
+|---------|-------------------------------|
+| `seed` (under `/**`) | any fixed integer, e.g. `42` (use `-1` for a fresh random map each launch) |
+| `n_obstacles` (`send_obstacles`) | `0` so only your `vect_*` obstacles are spawned |
+| `n_victims` (`send_victims`) | `0` so only your `vect_*` victims are spawned |
+| gate `x` / `y` (`send_gates`) | any **non-`(0.0, 0.0)`** position (a gate at `(0,0)` is placed randomly) |
+
+Then list your elements explicitly, keeping every `vect_*` list within a section
+the same length. Example (already shipped in `map_config.yaml`):
+
+~~~yaml
+/**/send_obstacles:
+  ros__parameters:
+    n_obstacles: 0
+    vect_type: ["box", "box", "cylinder", "cylinder"]
+    vect_x:     [3.0, -3.0,  0.0, -4.0]
+    vect_y:     [3.0,  3.0, -2.0, -4.0]
+    vect_yaw:   [0.0,  0.5,  0.0,  0.0]
+    vect_dim_x: [1.0,  1.5,  1.0,  0.8]   # box width / cylinder size
+    vect_dim_y: [1.0,  1.0,  1.0,  0.8]   # ignored for cylinders
+
+/**/send_gates:
+  ros__parameters:
+    x:   [0.0]
+    y:   [-8.0]
+    yaw: [1.5708]
+
+/**/send_victims:
+  ros__parameters:
+    victims_activated: true
+    n_victims: 0
+    vect_x:      [4.0, -4.0, 2.0]
+    vect_y:      [0.0,  0.0, 6.0]
+    vect_weight: [100,  200, 150]
+
+/**:
+  ros__parameters:
+    map: hexagon
+    dx: 10.0
+    seed: 42
+~~~
+
+Notes / gotchas:
+- Every element (with its footprint) must lie **inside** the map polygon and must
+  not overlap another element, the gate, or the robot at `(0,0)`; otherwise the
+  generator aborts the launch with an `assert`.
+- The launch reads the config from the **install space**, so after editing the
+  YAML you must rebuild before it takes effect:
+  ~~~
+  cd ros_ws
+  catkin_make
+  source devel/setup.bash
+  ~~~
+- Run it as usual; the map is now reproducible:
+  ~~~
+  roslaunch rescue_planner rescue_map.launch planner_type:=voronoi
+  ~~~
+
 ## Testing
 
 The `rescue_planner` package includes a **gtest** suite (`test/test_rescue_planner.cpp`) that
