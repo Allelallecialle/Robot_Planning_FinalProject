@@ -100,6 +100,11 @@ catkin test rescue_planner
 
 A successful run prints `PASSED` for every test case and exits with code 0.
 
+**Time budget in tests:** all integration and roadmap-budget checks use a **fixed
+30 second** rescue timeout (`Dmax = 0.30 m/s × 30 s × 0.85 = 7.65 m`), matching
+the course standard — never an unlimited budget. A separate 60 s budget test
+verifies victim collection when the graph tour is long enough to require it.
+
 **What is covered**
 
 | Area | Module / target |

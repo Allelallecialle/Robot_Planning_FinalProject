@@ -2,6 +2,7 @@
 
 #include "task/orienteering.hpp"
 #include "utils/roadmap_utils.hpp"
+#include "utils/planning_budget.hpp"
 
 #include <cmath>
 #include <limits>
@@ -49,14 +50,8 @@ VictimMissionResult computeVictimMission(RoadmapGraph& roadmap, const WorldModel
     }
     const double v_max = 0.3;
     const double dubins_safety = 1.15;
-    double budget;
-
-    if(world.victims_timeout > 0){
-        budget = v_max * world.victims_timeout * dubins_safety;
-    }
-    else{
-        budget = 1e9;
-    }
+    const double budget =
+        comb::distanceBudget(world.victims_timeout, v_max, dubins_safety);
 
     ROS_INFO("Victims timeout = %.2f",
              world.victims_timeout);

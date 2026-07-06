@@ -11,6 +11,7 @@
 
 #include "task/orienteering.hpp"
 #include "trajectory/dubins_dp.hpp"
+#include "utils/planning_budget.hpp"
 
 namespace {
 // yaw from a ROS quaternion (z-axis rotation), same formula as planner_base.py.
@@ -151,9 +152,8 @@ void VisibilityPlanner::plan() {
     // Budget: distance the robot can travel within the timeout at v_max,
     // derated by `dubins_safety` to leave room for curvature overhead (the
     // flyable Dubins path is always a bit longer than the straight graph path).
-    double Dmax = std::numeric_limits<double>::infinity();
-    if (world_->victims_timeout > 0)
-        Dmax = v_max_ * static_cast<double>(world_->victims_timeout) * dubins_safety_;
+    const double Dmax =
+        comb::distanceBudget(world_->victims_timeout, v_max_, dubins_safety_);
 
     comb::OrienteeringResult op =
         comb::solveOrienteering(D, values, Dmax, op_method_);

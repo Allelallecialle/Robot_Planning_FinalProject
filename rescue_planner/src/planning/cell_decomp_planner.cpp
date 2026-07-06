@@ -10,6 +10,7 @@
 #include <loco_planning/Reference.h>
 
 #include "task/tour_builder.hpp"
+#include "utils/planning_budget.hpp"
 
 namespace {
 // yaw from a ROS quaternion (z-axis rotation), same formula as planner_base.py.
@@ -150,9 +151,8 @@ void CellDecompPlanner::plan() {
     }
 
     // ---------- 3-5) all-pairs Dijkstra + orienteering + Dubins --------------
-    double Dmax = std::numeric_limits<double>::infinity();
-    if (world_->victims_timeout > 0)
-        Dmax = v_max_ * static_cast<double>(world_->victims_timeout) * dubins_safety_;
+    const double Dmax =
+        comb::distanceBudget(world_->victims_timeout, v_max_, dubins_safety_);
 
     const double t_plan0 = nowMs();
     comb::TourResult tour =
