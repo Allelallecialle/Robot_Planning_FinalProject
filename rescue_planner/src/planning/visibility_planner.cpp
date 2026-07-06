@@ -169,6 +169,7 @@ void VisibilityPlanner::plan() {
         if (metrics_) {
             metrics_->victims = 0;
             metrics_->path_length = 0.0;
+            metrics_->score = 0;
             metrics_->success = false;
         }
         publishStats(roadmap_ms, planning_ms, 0.0, 0.0, 0);
@@ -272,6 +273,7 @@ void VisibilityPlanner::plan() {
     if (metrics_) {
         metrics_->victims = static_cast<int>(op.victim_order.size());
         metrics_->path_length = traj_len;
+        metrics_->score = op.total_value;
         metrics_->success = true;
     }
     publishStats(roadmap_ms, planning_ms, total_value_, traj_len,

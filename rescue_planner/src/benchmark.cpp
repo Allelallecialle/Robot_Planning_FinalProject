@@ -43,6 +43,7 @@ void saveMetrics(const RunMetrics& m)
         << "edges,"
         << "path,"
         << "victims,"
+        << "score,"
         << "success\n";
     }
 
@@ -55,6 +56,7 @@ void saveMetrics(const RunMetrics& m)
         << m.roadmap_edges << ","
         << m.path_length << ","
         << m.victims << ","
+        << m.score << ","
         << m.success << "\n";
 
     file.flush();

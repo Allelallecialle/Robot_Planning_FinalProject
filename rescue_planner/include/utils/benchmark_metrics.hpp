@@ -16,6 +16,7 @@ struct RunMetrics
     double path_length = 0.0;
 
     int victims = 0;
+    double score = 0.0;
 
     bool success = false;
 };

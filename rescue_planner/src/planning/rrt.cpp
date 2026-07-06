@@ -124,6 +124,7 @@ void RRT::step(){
 
     if(metrics_){
         metrics_->victims = mission.selected_victims.size();
+        metrics_->score = mission.collected_value;
         metrics_->path_length = mission.total_length;
         metrics_->success = mission.feasible;
     }
