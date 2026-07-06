@@ -76,9 +76,7 @@ void RRTStar::step(){
        world_->gates.empty() || world_->borders.points.size() < 3)
         return;
 
-    // Build the ENTIRE tree up to its FIXED node budget in one shot, then plan
-    // exactly once. The node count therefore jumps straight to the fixed size
-    // and never grows sample-by-sample (and never past the budget).
+    // Build the full tree to the fixed node budget, then plan once.
     while(tree.size() < 1500){
         SamplePoint p = sampleRandomPoint(*world_);
         int nearest = nearestNode(p.x,p.y);
@@ -98,7 +96,6 @@ void RRTStar::step(){
     }
 
     roadmap_ = buildRoadmapGraph();
-    // --- for benchmark ----
     if(metrics_){
         metrics_->roadmap_nodes = roadmap_.nodes.size();
 
@@ -108,7 +105,6 @@ void RRTStar::step(){
 
         metrics_->roadmap_edges = edges;
     }
-    // -------------------
 
     auto plan = planSamplingMission(roadmap_, *world_, world_->start.yaw);
     const auto& mission = plan.mission;
@@ -116,21 +112,19 @@ void RRTStar::step(){
     if(!mission.feasible){
         ROS_WARN("No feasible rescue mission found on the fixed node budget "
                  "(%lu nodes); not sampling further.", tree.size());
-        planning_done = true;   // freeze: do not keep sampling more nodes
+        planning_done = true;  // freeze at fixed budget
         return;
     }
 
     ROS_INFO("Selected %lu victims",mission.selected_victims.size());
     ROS_INFO("Collected value %.2f",mission.collected_value);
 
-    // --- for benchmark ----
     if(metrics_){
         metrics_->victims = mission.selected_victims.size();
         metrics_->path_length = mission.total_length;
         metrics_->score = mission.collected_value;
         metrics_->success = mission.feasible;
     }
-    // -------------------
 
     selected_path_ = mission.graph_path;
 
@@ -199,7 +193,6 @@ RRTStar::RRTNode RRTStar::steer(const RRTNode& nearest, double target_x, double 
 }
 
 void RRTStar::visualize(){
-    // to draw tree nodes on map
    visualization_msgs::Marker nodes;
 
     nodes.header.frame_id = "map";
@@ -227,7 +220,6 @@ void RRTStar::visualize(){
     }
     marker_pub_.publish(nodes);
 
-    //here edges
     visualization_msgs::Marker edges;
     edges.header.frame_id = "map";
     edges.header.stamp = ros::Time::now();
@@ -261,8 +253,6 @@ void RRTStar::visualize(){
     }
 
     marker_pub_.publish(edges);
-   //-----
-   // selected path visualization
    visualization_msgs::Marker path;
 
     path.header.frame_id = "map";
@@ -306,7 +296,6 @@ RoadmapGraph RRTStar::buildRoadmapGraph() const
     g.nodes.reserve(tree.size());
     g.adjacency.resize(tree.size());
 
-    // Copy nodes
     for(const auto& node : tree)
     {
         GraphNode n;
@@ -316,7 +305,6 @@ RoadmapGraph RRTStar::buildRoadmapGraph() const
         g.nodes.push_back(n);
     }
 
-    // Copy edges following the current parent relation
     for(size_t i = 1; i < tree.size(); i++)
     {
         int parent = tree[i].parent;

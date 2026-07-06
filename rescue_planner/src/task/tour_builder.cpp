@@ -46,36 +46,24 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
     TourResult out;
     if (graph.start_idx < 0 || graph.gate_idx < 0) return out;
 
-    // ---------- 1) all-pairs shortest distances between POIs ------------------
-    // POI index convention (matching orienteering.hpp): 0 = start, 1..n =
-    // victims, n+1 = gate.
+    // POI index: 0 = start, 1..n = victims, n+1 = gate.
     std::vector<int> poi_node;
     poi_node.push_back(graph.start_idx);
     for (int idx : graph.victim_idx) poi_node.push_back(idx);
     poi_node.push_back(graph.gate_idx);
-    const int P = static_cast<int>(poi_node.size());  // == n + 2
+    const int P = static_cast<int>(poi_node.size());
 
     std::vector<std::vector<double>> D(P, std::vector<double>(P, 0.0));
-    std::vector<std::vector<int>> prevs(P);  // Dijkstra predecessor per POI
+    std::vector<std::vector<int>> prevs(P);
     for (int p = 0; p < P; ++p) {
         std::vector<double> dgraph;
         dijkstra(graph, poi_node[p], dgraph, prevs[p]);
         for (int q = 0; q < P; ++q) {
             if (p == q) { D[p][q] = 0.0; continue; }
             const double raw = dgraph[poi_node[q]];
-            if (!std::isfinite(raw)) { D[p][q] = raw; continue; }  // unreachable
+            if (!std::isfinite(raw)) { D[p][q] = raw; continue; }
 
-            // The cost the orienteering solver sees MUST match what the robot
-            // actually travels. The raw roadmap shortest path hugs the medial
-            // axis (Voronoi) or steps along cell boundaries (cell decomposition),
-            // so its length overestimates the travelled distance -- but before
-            // stitching we line-of-sight simplify that path (see
-            // simplifyLineOfSight / step 3), shortcutting across free space.
-            // Budgeting the OP against the RAW length therefore makes victim
-            // selection needlessly conservative (few victims fit, huge timeouts
-            // needed). So we budget against the SIMPLIFIED polyline length, i.e.
-            // the distance the robot really flies. On the visibility graph the
-            // shortest path is already near-straight, so this is a no-op there.
+            // Budget against line-of-sight simplified length, not raw medial-axis path.
             const std::vector<int> seg =
                 reconstructPath(poi_node[p], poi_node[q], prevs[p]);
             if (seg.size() < 2) { D[p][q] = raw; continue; }
@@ -91,7 +79,6 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
         }
     }
 
-    // ---------- 2) orienteering: pick victim subset & order -------------------
     const OrienteeringResult op =
         solveOrienteering(D, values, Dmax, op_method);
     out.total_value = op.total_value;
@@ -100,15 +87,10 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
     out.feasible = op.feasible;
     if (!op.feasible) return out;
 
-    // ---------- 3) expand POI order into a geometric waypoint polyline --------
-    // Each POI-to-POI leg is reconstructed on the roadmap, then simplified by
-    // clearance-safe line-of-sight shortcutting (see simplifyLineOfSight). The
-    // POI endpoints (start, victims, gate) are always preserved, so every
-    // selected victim is still visited.
     std::vector<int> poi_order;
-    poi_order.push_back(0);                       // start
+    poi_order.push_back(0);
     for (int vi : op.victim_order) poi_order.push_back(vi + 1);
-    poi_order.push_back(P - 1);                   // gate
+    poi_order.push_back(P - 1);
 
     std::vector<Vec2> waypoints;
     for (std::size_t k = 0; k + 1 < poi_order.size(); ++k) {
@@ -116,7 +98,7 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
         const int b = poi_order[k + 1];
         const std::vector<int> seg =
             reconstructPath(poi_node[a], poi_node[b], prevs[a]);
-        if (seg.empty()) continue;  // POI unreachable on the roadmap
+        if (seg.empty()) continue;
 
         std::vector<Vec2> segpts;
         segpts.reserve(seg.size());
@@ -135,15 +117,10 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
     }
     out.waypoints = waypoints;
 
-    // ---------- 4) heading DP + Dubins stitching with clearance re-check ------
-    // Start/gate headings are fixed; the intermediate (victim/corner) headings
-    // are chosen by the DP. Each stitched arc is re-sampled against the inflated
-    // map: if a leg clips, we insert the midpoint of the offending straight leg
-    // (clear by construction) and re-optimise, which shrinks the bulging arc.
     std::vector<Vec2> pts = waypoints;
     std::vector<RefSample> ref;
     const int max_subdiv = 12;
-    bool complete = false;  // did the WHOLE trajectory (start..gate) stitch clear?
+    bool complete = false;
     for (int iter = 0; iter <= max_subdiv; ++iter) {
         const std::vector<double> ang = optimizeHeadings(
             pts, start_yaw, gate_yaw, k_max, dubins_discretizations);
@@ -171,17 +148,13 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
             t_off = ref.empty() ? 0.0 : ref.back().t + dt;
         }
 
-        if (bad_leg < 0) { complete = true; break; }  // fully clear
+        if (bad_leg < 0) { complete = true; break; }
         const Vec2 mid{(pts[bad_leg].x + pts[bad_leg + 1].x) / 2.0,
                        (pts[bad_leg].y + pts[bad_leg + 1].y) / 2.0};
         pts.insert(pts.begin() + bad_leg + 1, mid);
     }
 
-    // If a leg still clips an obstacle after all subdivisions, `ref` only holds
-    // the arcs BEFORE the offending leg -- a truncated path that stops short of
-    // the gate (or cuts the corner it failed to round). Publishing it would send
-    // the robot toward an obstacle and never reach the gate, so we reject the
-    // tour as infeasible instead of returning the partial reference.
+    // Reject truncated reference that stops short of the gate.
     if (!complete) {
         out.reference.clear();
         out.flyable_length = 0.0;

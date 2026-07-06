@@ -1,20 +1,3 @@
-// ============================================================================
-//  test_rescue_planner.cpp  --  gtest suite for the rescue_planner package
-// ----------------------------------------------------------------------------
-//  Covers the combinatorial planning stack (geometry, roadmaps, orienteering,
-//  Dubins, and the shared tour pipeline) as well as the sampling planners'
-//  raw collision checker. No ROS master / ros::init is required: every test
-//  builds the geometry (comb::GeoMap) or a mock WorldModel directly and
-//  exercises the planning LOGIC through the shared modules. See the CMakeLists
-//  "Testing" comment block for how to run and the coverage overview.
-//
-//  Shared mock world (used by every geometry/roadmap test), per TASK B.1:
-//    * 10 x 10 m square border, corners (0,0)-(10,10)
-//    * a 2 x 2 m square obstacle centred at (5,5)  -> corners (4,4)-(6,6)
-//    * a circular obstacle of radius 0.5 m at (3,3)
-//    * POIs: start (1,1), one victim at (2,7), gate at (8,2)
-// ============================================================================
-
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -43,20 +26,16 @@ const comb::Vec2 kVictim{2.0, 7.0};
 const comb::Vec2 kGate{8.0, 2.0};
 
 // Fixed course-standard rescue budget (30 s at v_max=0.30 m/s, derated).
-// Used everywhere a finite time limit is required — never +infinity in tests.
 constexpr int    kTestTimeoutSec    = 30;
 constexpr double   kTestVmax          = 0.30;
 constexpr double   kTestDubinsSafety  = 0.85;
 constexpr double   kTestDmax          =
-    comb::distanceBudget(kTestTimeoutSec, kTestVmax, kTestDubinsSafety);  // 7.65 m
+    comb::distanceBudget(kTestTimeoutSec, kTestVmax, kTestDubinsSafety);
 
-// Budget large enough to visit the victim on the visibility roadmap and still
-// reach the gate (graph tour start->victim->gate ≈ 14.5 m on the mock world).
 constexpr int    kVictimTimeoutSec    = 60;
 constexpr double kVictimBudgetDmax    =
     comb::distanceBudget(kVictimTimeoutSec, kTestVmax, kTestDubinsSafety);
 
-// ---- shared mock geometry (comb::GeoMap) for the combinatorial modules -----
 comb::GeoMap makeGeoMap(double clearance = kClearance) {
     comb::GeoMap map;
     map.clearance = clearance;
@@ -64,7 +43,7 @@ comb::GeoMap makeGeoMap(double clearance = kClearance) {
 
     comb::Obstacle square;
     square.is_circle = false;
-    square.verts = {{4.0, 4.0}, {6.0, 4.0}, {6.0, 6.0}, {4.0, 6.0}};  // CCW
+    square.verts = {{4.0, 4.0}, {6.0, 4.0}, {6.0, 6.0}, {4.0, 6.0}};
     map.obstacles.push_back(square);
 
     comb::Obstacle circle;
@@ -77,7 +56,6 @@ comb::GeoMap makeGeoMap(double clearance = kClearance) {
 
 std::vector<comb::Vec2> victims() { return {kVictim}; }
 
-// ---- shared mock WorldModel (raw geometry) for the sampling collision checker
 geometry_msgs::Point32 pt(double x, double y) {
     geometry_msgs::Point32 p;
     p.x = static_cast<float>(x);
@@ -90,12 +68,12 @@ WorldModel makeWorldModel() {
     WorldModel w;
     w.borders.points = {pt(0, 0), pt(10, 0), pt(10, 10), pt(0, 10)};
 
-    WorldModel::Obstacle box;             // 2x2 square, radius 0 => polygon
-    box.polygon.points = {pt(4, 4), pt(6, 4), pt(6, 6), pt(4, 6)};  // CCW
+    WorldModel::Obstacle box;
+    box.polygon.points = {pt(4, 4), pt(6, 4), pt(6, 6), pt(4, 6)};
     box.radius = 0.0;
     w.obstacles.push_back(box);
 
-    WorldModel::Obstacle cyl;             // circle => 1 point + radius > 0
+    WorldModel::Obstacle cyl;
     cyl.polygon.points = {pt(3, 3)};
     cyl.radius = 0.5;
     w.obstacles.push_back(cyl);
@@ -108,7 +86,6 @@ WorldModel makeWorldModel() {
     return w;
 }
 
-// Convenience: is a polyline (roadmap node path) collision-free when sampled?
 bool polylineClear(const comb::VisibilityGraph& g, const std::vector<int>& path,
                    const comb::GeoMap& map, double res) {
     for (size_t i = 0; i + 1 < path.size(); ++i) {
@@ -127,26 +104,22 @@ bool polylineClear(const comb::VisibilityGraph& g, const std::vector<int>& path,
 
 }  // namespace
 
-// ============================================================================
-//  B.1  geometry_utils
-// ============================================================================
 TEST(GeometryUtils, PointInPolygon) {
     const comb::GeoMap map = makeGeoMap();
-    EXPECT_TRUE(comb::pointInPolygon({5.0, 5.0}, map.border));   // inside border
-    EXPECT_FALSE(comb::pointInPolygon({11.0, 11.0}, map.border));// outside border
-    // On the boundary either answer is acceptable (documented): just no crash.
+    EXPECT_TRUE(comb::pointInPolygon({5.0, 5.0}, map.border));
+    EXPECT_FALSE(comb::pointInPolygon({11.0, 11.0}, map.border));
     (void)comb::pointInPolygon({0.0, 5.0}, map.border);
 }
 
 TEST(GeometryUtils, PointInCollisionClearance) {
     const comb::GeoMap map = makeGeoMap(0.30);
-    EXPECT_TRUE(comb::pointInCollision({0.1, 0.1}, map));   // too close to border
-    EXPECT_FALSE(comb::pointInCollision({1.0, 1.0}, map));  // clearly free
-    EXPECT_TRUE(comb::pointInCollision({5.0, 5.0}, map));   // inside square
-    EXPECT_TRUE(comb::pointInCollision({4.4, 5.0}, map));   // inside/near square edge
-    EXPECT_TRUE(comb::pointInCollision({3.0, 3.0}, map));   // inside circle
-    EXPECT_TRUE(comb::pointInCollision({3.0, 3.7}, map));   // within circle clearance
-    EXPECT_FALSE(comb::pointInCollision({3.0, 4.0}, map));  // clear of circle
+    EXPECT_TRUE(comb::pointInCollision({0.1, 0.1}, map));
+    EXPECT_FALSE(comb::pointInCollision({1.0, 1.0}, map));
+    EXPECT_TRUE(comb::pointInCollision({5.0, 5.0}, map));
+    EXPECT_TRUE(comb::pointInCollision({4.4, 5.0}, map));
+    EXPECT_TRUE(comb::pointInCollision({3.0, 3.0}, map));
+    EXPECT_TRUE(comb::pointInCollision({3.0, 3.7}, map));
+    EXPECT_FALSE(comb::pointInCollision({3.0, 4.0}, map));
 }
 
 TEST(GeometryUtils, SegmentClear) {
@@ -166,9 +139,6 @@ TEST(GeometryUtils, InflatedPolygonVerticesAreFree) {
     for (const auto& q : infl) EXPECT_FALSE(comb::pointInCollision(q, map));
 }
 
-// ============================================================================
-//  B.2  visibility_graph
-// ============================================================================
 TEST(VisibilityGraph, ContainsPoisAndClearEdges) {
     const comb::GeoMap map = makeGeoMap();
     const comb::VisibilityGraph g = comb::buildVisibilityGraph(
@@ -179,7 +149,6 @@ TEST(VisibilityGraph, ContainsPoisAndClearEdges) {
     EXPECT_GE(g.gate_idx, 0);
     ASSERT_EQ(g.victim_idx.size(), 1u);
 
-    // Every edge must be collision-free (sample-based, resolution 0.02 m).
     for (int i = 0; i < static_cast<int>(g.adj.size()); ++i)
         for (int j : g.adj[i])
             if (j > i)
@@ -188,11 +157,10 @@ TEST(VisibilityGraph, ContainsPoisAndClearEdges) {
 }
 
 TEST(VisibilityGraph, DijkstraAndReconstruct) {
-    // Hand-built graph with an isolated node to exercise the unreachable case.
     comb::VisibilityGraph g;
     const int a = g.addNode({0.0, 0.0});
     const int b = g.addNode({1.0, 0.0});
-    const int c = g.addNode({5.0, 5.0});  // isolated
+    const int c = g.addNode({5.0, 5.0});
     g.adj[a].push_back(b);
     g.adj[b].push_back(a);
 
@@ -207,7 +175,7 @@ TEST(VisibilityGraph, DijkstraAndReconstruct) {
     ASSERT_EQ(path.size(), 2u);
     EXPECT_EQ(path.front(), a);
     EXPECT_EQ(path.back(), b);
-    EXPECT_TRUE(comb::reconstructPath(a, c, prev).empty());  // unreachable
+    EXPECT_TRUE(comb::reconstructPath(a, c, prev).empty());
 }
 
 TEST(VisibilityGraph, ShortestPathAvoidsObstacles) {
@@ -224,13 +192,9 @@ TEST(VisibilityGraph, ShortestPathAvoidsObstacles) {
         comb::reconstructPath(g.start_idx, g.gate_idx, prev);
     ASSERT_GE(path.size(), 2u);
     EXPECT_TRUE(polylineClear(g, path, map, 0.02));
-    // Shortest graph distance start->gate must fit the 30 s course budget.
     EXPECT_LT(dist[g.gate_idx], kTestDmax);
 }
 
-// ============================================================================
-//  B.3  cell_decomposition
-// ============================================================================
 TEST(CellDecomposition, BuildAndFreeCells) {
     const comb::GeoMap map = makeGeoMap();
     const comb::CellDecomposition d =
@@ -251,7 +215,7 @@ TEST(CellDecomposition, AdjacencyBetweenNeighbouringSlabs) {
 
     for (const auto& c : d.cells) {
         for (int nb : d.roadmap.adj[c.node]) {
-            if (node2slab[nb] < 0) continue;  // POI stub, not a cell
+            if (node2slab[nb] < 0) continue;
             EXPECT_EQ(std::abs(node2slab[c.node] - node2slab[nb]), 1);
         }
     }
@@ -270,8 +234,7 @@ TEST(CellDecomposition, PoiReachabilityAndDistances) {
     ASSERT_EQ(g.victim_idx.size(), 1u);
     EXPECT_TRUE(std::isfinite(dist[g.victim_idx[0]]));
 
-    // On this mock world the cell roadmap is longer than the 30 s budget allows
-    // (D[start][gate] >> Dmax); POI reachability is still required.
+    // Cell roadmap exceeds 30 s budget on this mock; reachability still required.
     EXPECT_GT(dist[g.gate_idx], kTestDmax);
 
     const std::vector<int> path =
@@ -280,9 +243,6 @@ TEST(CellDecomposition, PoiReachabilityAndDistances) {
     EXPECT_TRUE(polylineClear(g, path, map, 0.05));
 }
 
-// ============================================================================
-//  B.4  voronoi_roadmap
-// ============================================================================
 TEST(VoronoiRoadmap, DistanceTransform) {
     const comb::GeoMap map = makeGeoMap();
     const comb::VoronoiGrid grid = comb::buildDistanceTransform(map, 0.05);
@@ -309,8 +269,6 @@ TEST(VoronoiRoadmap, SkeletonClearance) {
         const int i = c % grid.nx;
         const int j = c / grid.nx;
         EXPECT_GE(grid.dist[c], map.clearance);
-        // NOT in collision, up to one cell of distance-transform quantisation
-        // (dist measures the distance to the nearest OCCUPIED cell centre).
         EXPECT_FALSE(comb::pointInCollision(grid.world(i, j), map,
                                             map.clearance - grid.res));
     }
@@ -328,16 +286,12 @@ TEST(VoronoiRoadmap, GraphReachabilityAndClearance) {
     EXPECT_TRUE(std::isfinite(dist[g.gate_idx]));
     ASSERT_EQ(g.victim_idx.size(), 1u);
     EXPECT_TRUE(std::isfinite(dist[g.victim_idx[0]]));
-    // Grid-discretised GVD: allow slack for quantisation vs the exact 30 s budget.
     EXPECT_LT(dist[g.gate_idx], kTestDmax + 0.50);
 
     const std::vector<int> path =
         comb::reconstructPath(g.start_idx, g.gate_idx, prev);
     ASSERT_GE(path.size(), 2u);
 
-    // Maximum-clearance guarantee: every point on the reconstructed polyline is
-    // at least r_c away from all obstacles (look up the distance transform at
-    // the nearest grid cell, allowing one cell of quantisation tolerance).
     const comb::VoronoiGrid& grid = vor.grid;
     for (size_t i = 0; i + 1 < path.size(); ++i) {
         const comb::Vec2 a = g.nodes[path[i]];
@@ -357,11 +311,7 @@ TEST(VoronoiRoadmap, GraphReachabilityAndClearance) {
     }
 }
 
-// ============================================================================
-//  B.5  orienteering
-// ============================================================================
 TEST(Orienteering, ZeroVictims) {
-    // D = [[0, 3],[3, 0]] : only start (0) and gate (1).
     const std::vector<std::vector<double>> D = {{0.0, 3.0}, {3.0, 0.0}};
     const comb::OrienteeringResult r =
         comb::solveOrienteering(D, {}, 100.0, "exact");
@@ -372,8 +322,6 @@ TEST(Orienteering, ZeroVictims) {
 }
 
 TEST(Orienteering, SingleVictimBudgetBoundary) {
-    // index 0=start, 1=victim, 2=gate.  a = d(s,v) = 1, b = d(v,g) = 1,
-    // c = d(s,g) = 1 (direct).
     const std::vector<std::vector<double>> D = {
         {0.0, 1.0, 1.0}, {1.0, 0.0, 1.0}, {1.0, 1.0, 0.0}};
     const std::vector<double> values = {5.0};
@@ -387,23 +335,19 @@ TEST(Orienteering, SingleVictimBudgetBoundary) {
 
     const comb::OrienteeringResult out =
         comb::solveOrienteering(D, values, 2.0 - 1e-3, "exact");
-    EXPECT_TRUE(out.feasible);           // can still reach the gate directly
+    EXPECT_TRUE(out.feasible);
     EXPECT_DOUBLE_EQ(out.total_value, 0.0);
     EXPECT_TRUE(out.victim_order.empty());
 }
 
 TEST(Orienteering, TwoVictims) {
-    // 0=start, 1=v0, 2=v1, 3=gate. The two victims are FAR apart (D[v0][v1]=10)
-    // so visiting both is expensive, but either one alone is cheap:
-    //   s->v0->g = 2, s->v1->g = 2, s->v0->v1->g = 12, s->g = 1.5.
     const std::vector<std::vector<double>> D = {
         {0.0, 1.0, 1.0, 1.5},
         {1.0, 0.0, 10.0, 1.0},
         {1.0, 10.0, 0.0, 1.0},
         {1.5, 1.0, 1.0, 0.0}};
-    const std::vector<double> values = {3.0, 7.0};  // v1 is more valuable
+    const std::vector<double> values = {3.0, 7.0};
 
-    // Budget allows exactly one victim: must pick the higher-value one (v1).
     const comb::OrienteeringResult one =
         comb::solveOrienteering(D, values, 2.5, "exact");
     EXPECT_TRUE(one.feasible);
@@ -411,14 +355,12 @@ TEST(Orienteering, TwoVictims) {
     ASSERT_EQ(one.victim_order.size(), 1u);
     EXPECT_EQ(one.victim_order[0], 1);
 
-    // Budget for both (s->v0->v1->g = 12): picks both, value 10.
     const comb::OrienteeringResult both =
         comb::solveOrienteering(D, values, 100.0, "exact");
     EXPECT_TRUE(both.feasible);
     EXPECT_DOUBLE_EQ(both.total_value, 10.0);
     EXPECT_EQ(both.victim_order.size(), 2u);
 
-    // Greedy must also return a feasible tour on the same instance.
     const comb::OrienteeringResult greedy =
         comb::solveOrienteering(D, values, 100.0, "greedy");
     EXPECT_TRUE(greedy.feasible);
@@ -426,8 +368,6 @@ TEST(Orienteering, TwoVictims) {
 }
 
 TEST(Orienteering, AutoThreshold) {
-    // For n <= 16 "auto" must match the exact DP; for n > 16 it must match the
-    // greedy heuristic (that is how the auto branch selects the solver).
     auto lineInstance = [](int n) {
         const int P = n + 2;
         std::vector<std::vector<double>> D(P, std::vector<double>(P, 0.0));
@@ -446,7 +386,7 @@ TEST(Orienteering, AutoThreshold) {
         EXPECT_DOUBLE_EQ(a.total_value, e.total_value);
     }
     {
-        const int n = 18;  // > 16 => auto must fall back to greedy
+        const int n = 18;
         const auto D = lineInstance(n);
         const std::vector<double> values(n, 1.0);
         const auto a = comb::solveOrienteering(D, values, 1000.0, "auto");
@@ -456,11 +396,8 @@ TEST(Orienteering, AutoThreshold) {
     }
 }
 
-// ============================================================================
-//  B.6  dubins
-// ============================================================================
 TEST(Dubins, LengthLowerBounds) {
-    const double kmax = 1.0 / 0.5;  // turning radius 0.5 m
+    const double kmax = 1.0 / 0.5;
     const comb::DubinsCurve c =
         comb::dubinsShortestPath(0.0, 0.0, 0.0, 3.0, 4.0, 1.0, kmax);
     ASSERT_TRUE(c.valid);
@@ -472,7 +409,7 @@ TEST(Dubins, StraightAhead) {
     const comb::DubinsCurve c =
         comb::dubinsShortestPath(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, kmax);
     ASSERT_TRUE(c.valid);
-    EXPECT_NEAR(c.L, 1.0, 1e-6);  // colinear, aligned heading => straight line
+    EXPECT_NEAR(c.L, 1.0, 1e-6);
 }
 
 TEST(Dubins, UTurnHalfCircle) {
@@ -481,7 +418,7 @@ TEST(Dubins, UTurnHalfCircle) {
     const comb::DubinsCurve c =
         comb::dubinsShortestPath(0.0, 0.0, 0.0, 0.0, 0.6, M_PI, kmax);
     ASSERT_TRUE(c.valid);
-    EXPECT_GE(c.L, M_PI * r * 0.9);  // reversing heading needs ~half a circle
+    EXPECT_GE(c.L, M_PI * r * 0.9);
 }
 
 TEST(Dubins, DiscretizedEndpointAccuracy) {
@@ -501,9 +438,6 @@ TEST(Dubins, DiscretizedEndpointAccuracy) {
     EXPECT_LT(dth, 0.1);
 }
 
-// ============================================================================
-//  B.7  integration / pipeline (one per combinatorial planner type)
-// ============================================================================
 namespace {
 
 void checkTourWithinBudget(const comb::TourResult& tour, double dmax,
@@ -557,10 +491,7 @@ TEST(Pipeline, CellDecompReachesGateWithin30sBudget) {
     const comb::GeoMap map = makeGeoMap();
     const comb::CellDecomposition d =
         comb::buildCellDecomposition(map, kStart, victims(), kGate, 0.05);
-    // The RAW cell-boundary graph tour is much longer than 30 s allows, but the
-    // executed path is line-of-sight simplified, and start->gate is a clear ~7 m
-    // straight shot (< 7.65 m budget). planTour budgets against the simplified
-    // length, so the tour is feasible to the gate (no victim: it needs ~13.9 m).
+    // Raw cell graph exceeds 30 s; planTour budgets simplified line-of-sight path.
     const comb::TourResult tour = runPipeline(d.roadmap, map, kTestDmax);
     checkTourWithinBudget(tour, kTestDmax);
     EXPECT_TRUE(tour.victim_order.empty());
@@ -570,18 +501,12 @@ TEST(Pipeline, VoronoiReachesGateWithin30sBudget) {
     const comb::GeoMap map = makeGeoMap();
     const comb::VoronoiRoadmap vor =
         comb::buildVoronoiRoadmap(map, kStart, victims(), kGate, 0.05, 20, 0.05);
-    // The RAW GVD (medial-axis) tour (~7.9 m) exceeds the 7.65 m budget, but the
-    // executed path is line-of-sight simplified back to the clear ~7 m straight
-    // start->gate shot, so planTour (budgeting against the simplified length)
-    // reaches the gate within budget (no victim fits in 7.65 m).
+    // Raw GVD exceeds budget; planTour budgets simplified line-of-sight path.
     const comb::TourResult tour = runPipeline(vor.roadmap, map, kTestDmax);
     checkTourWithinBudget(tour, kTestDmax);
     EXPECT_TRUE(tour.victim_order.empty());
 }
 
-// ============================================================================
-//  B.8  sampling planners' raw collision checker (teammate code, not modified)
-// ============================================================================
 TEST(CollisionChecker, IsInsideMap) {
     const WorldModel w = makeWorldModel();
     EXPECT_TRUE(isInsideMap(5.0, 5.0, w.borders));
@@ -590,17 +515,17 @@ TEST(CollisionChecker, IsInsideMap) {
 
 TEST(CollisionChecker, IsPointValidRaw) {
     const WorldModel w = makeWorldModel();
-    EXPECT_TRUE(isPointValid(1.0, 1.0, w));    // free
-    EXPECT_TRUE(isPointValid(0.1, 0.1, w));    // valid: raw checker has NO clearance
-    EXPECT_FALSE(isPointValid(5.0, 5.0, w));   // inside the box
-    EXPECT_FALSE(isPointValid(3.0, 3.0, w));   // inside the cylinder
-    EXPECT_FALSE(isPointValid(11.0, 11.0, w)); // outside the map
+    EXPECT_TRUE(isPointValid(1.0, 1.0, w));
+    EXPECT_TRUE(isPointValid(0.1, 0.1, w));  // raw checker has no clearance
+    EXPECT_FALSE(isPointValid(5.0, 5.0, w));
+    EXPECT_FALSE(isPointValid(3.0, 3.0, w));
+    EXPECT_FALSE(isPointValid(11.0, 11.0, w));
 }
 
 TEST(CollisionChecker, IsSegmentValidRaw) {
     const WorldModel w = makeWorldModel();
     EXPECT_TRUE(isSegmentValid(1.0, 1.0, 2.0, 2.0, w));
-    EXPECT_FALSE(isSegmentValid(1.0, 1.0, 5.0, 5.0, w));  // crosses the box
+    EXPECT_FALSE(isSegmentValid(1.0, 1.0, 5.0, 5.0, w));
 }
 
 int main(int argc, char** argv) {

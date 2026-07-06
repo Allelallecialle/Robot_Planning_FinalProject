@@ -10,7 +10,6 @@ namespace comb {
 
 namespace {
 
-// Axis-aligned bounding box of a polygon.
 struct BBox {
     double min_x = 0.0, max_x = 0.0, min_y = 0.0, max_y = 0.0;
     bool valid = false;
@@ -31,23 +30,18 @@ BBox borderBBox(const GeoMap& map) {
     return b;
 }
 
-// Insert a clamped, de-duplicated x sweep event.
 void addEvent(std::vector<double>& xs, double x, double lo, double hi) {
     if (x < lo) x = lo;
     if (x > hi) x = hi;
     xs.push_back(x);
 }
 
-// Connect a point of interest to the roadmap: to every cell whose free
-// y-interval contains it in its own slab (via a clear segment), and, if none is
-// directly reachable, to the nearest cell by Euclidean distance with a
-// segmentClear fallback. Adds undirected adjacency to `g`.
+// Connect POI to cells in its slab, or nearest reachable cell.
 void connectPoi(Roadmap& g, int poi_idx, const GeoMap& map,
                 const std::vector<DecompCell>& cells,
                 const std::vector<double>& slab_x, double sample_res) {
     const Vec2 p = g.nodes[poi_idx];
 
-    // Slab that contains p.x (the interval [slab_x[s], slab_x[s+1]]).
     int slab = -1;
     for (std::size_t s = 0; s + 1 < slab_x.size(); ++s) {
         if (p.x >= slab_x[s] - 1e-9 && p.x <= slab_x[s + 1] + 1e-9) {
@@ -68,7 +62,6 @@ void connectPoi(Roadmap& g, int poi_idx, const GeoMap& map,
     }
     if (connected) return;
 
-    // Fallback: nearest representative reachable by a clear straight segment.
     int best = -1;
     double best_d2 = std::numeric_limits<double>::infinity();
     for (const auto& c : cells) {
@@ -93,16 +86,14 @@ CellDecomposition buildCellDecomposition(const GeoMap& map, const Vec2& start,
     const double r_c = map.clearance;
 
     const BBox bb = borderBBox(map);
-    if (!bb.valid) return out;  // no border => nothing to decompose
+    if (!bb.valid) return out;
 
-    // ---------- POIs always become nodes (index convention: start,victims,gate)
     out.roadmap.start_idx = out.roadmap.addNode(start);
     out.roadmap.victim_idx.reserve(victims.size());
     for (const auto& v : victims)
         out.roadmap.victim_idx.push_back(out.roadmap.addNode(v));
     out.roadmap.gate_idx = out.roadmap.addNode(gate);
 
-    // ---------- Step 1: collect sweep-line x events ---------------------------
     std::vector<double>& xs = out.slab_x;
     addEvent(xs, bb.min_x, bb.min_x, bb.max_x);
     addEvent(xs, bb.max_x, bb.min_x, bb.max_x);
@@ -118,7 +109,6 @@ CellDecomposition buildCellDecomposition(const GeoMap& map, const Vec2& start,
         }
     }
     std::sort(xs.begin(), xs.end());
-    // De-duplicate nearly-coincident events (keep slabs non-degenerate).
     std::vector<double> uniq;
     for (double x : xs) {
         if (uniq.empty() || x - uniq.back() > std::max(1e-6, sample_res * 0.5))
@@ -126,7 +116,6 @@ CellDecomposition buildCellDecomposition(const GeoMap& map, const Vec2& start,
     }
     xs.swap(uniq);
 
-    // ---------- Steps 2-3: free y-intervals per slab --------------------------
     const double dy = std::max(sample_res * 0.5, 1e-3);
     for (std::size_t s = 0; s + 1 < xs.size(); ++s) {
         const double x_lo = xs[s];
@@ -136,7 +125,6 @@ CellDecomposition buildCellDecomposition(const GeoMap& map, const Vec2& start,
         bool in_run = false;
         double run_lo = 0.0, run_lo_prev = 0.0;
         double y = bb.min_y;
-        // Sweep inclusive of the top border; a trailing !free closes the run.
         while (y <= bb.max_y + 1e-9) {
             const bool free = !pointInCollision({x_mid, y}, map);
             if (free && !in_run) {
@@ -145,7 +133,7 @@ CellDecomposition buildCellDecomposition(const GeoMap& map, const Vec2& start,
             } else if (!free && in_run) {
                 in_run = false;
                 const double y_lo = run_lo;
-                const double y_hi = run_lo_prev;  // last free sample
+                const double y_hi = run_lo_prev;
                 if (y_hi - y_lo >= 2.0 * r_c) {
                     DecompCell c;
                     c.x_lo = x_lo; c.x_hi = x_hi;
@@ -161,7 +149,7 @@ CellDecomposition buildCellDecomposition(const GeoMap& map, const Vec2& start,
             if (free) run_lo_prev = y;
             y += dy;
         }
-        if (in_run) {  // free run reaching the top border
+        if (in_run) {
             const double y_lo = run_lo;
             const double y_hi = run_lo_prev;
             if (y_hi - y_lo >= 2.0 * r_c) {
@@ -178,12 +166,11 @@ CellDecomposition buildCellDecomposition(const GeoMap& map, const Vec2& start,
         }
     }
 
-    // ---------- Step 4: cell adjacency across neighbouring slabs --------------
     for (std::size_t i = 0; i < out.cells.size(); ++i) {
         for (std::size_t j = i + 1; j < out.cells.size(); ++j) {
             const DecompCell& a = out.cells[i];
             const DecompCell& b = out.cells[j];
-            if (std::abs(a.slab - b.slab) != 1) continue;  // only neighbours
+            if (std::abs(a.slab - b.slab) != 1) continue;
             const double overlap =
                 std::min(a.y_hi, b.y_hi) - std::max(a.y_lo, b.y_lo);
             if (overlap < sample_res) continue;
@@ -195,7 +182,6 @@ CellDecomposition buildCellDecomposition(const GeoMap& map, const Vec2& start,
         }
     }
 
-    // ---------- Step 5: connect the POIs --------------------------------------
     connectPoi(out.roadmap, out.roadmap.start_idx, map, out.cells, xs, sample_res);
     for (int vi : out.roadmap.victim_idx)
         connectPoi(out.roadmap, vi, map, out.cells, xs, sample_res);
@@ -225,14 +211,13 @@ CellDecomposition buildApproxCellDecomposition(const GeoMap& map,
     const int ny =
         std::max(1, static_cast<int>(std::ceil((bb.max_y - bb.min_y) / cell_size)));
 
-    // grid[i][j] -> node index of a FREE cell, or -1.
     std::vector<std::vector<int>> grid(nx, std::vector<int>(ny, -1));
     const double h = 0.5 * cell_size;
     for (int i = 0; i < nx; ++i) {
         for (int j = 0; j < ny; ++j) {
             const double cx = bb.min_x + (i + 0.5) * cell_size;
             const double cy = bb.min_y + (j + 0.5) * cell_size;
-            // FREE only when the centre AND all four corners are clear.
+            // FREE only when centre and all four corners are clear.
             const Vec2 probes[5] = {{cx, cy},
                                     {cx - h, cy - h}, {cx + h, cy - h},
                                     {cx - h, cy + h}, {cx + h, cy + h}};
@@ -252,7 +237,6 @@ CellDecomposition buildApproxCellDecomposition(const GeoMap& map,
         }
     }
 
-    // 4-connectivity edges between neighbouring FREE cells.
     for (int i = 0; i < nx; ++i) {
         for (int j = 0; j < ny; ++j) {
             const int a = grid[i][j];
@@ -272,7 +256,6 @@ CellDecomposition buildApproxCellDecomposition(const GeoMap& map,
         }
     }
 
-    // Connect POIs to the nearest reachable FREE cell centre.
     auto connect = [&](int poi_idx) {
         const Vec2 p = out.roadmap.nodes[poi_idx];
         int best = -1;

@@ -10,7 +10,7 @@ public:
     virtual ~Planner() {}
 
     virtual bool isPlanningDone() const = 0;
-    // Benchmark
+
     void setMetrics(RunMetrics* m)
     {
         metrics_ = m;

@@ -18,23 +18,19 @@ VisibilityGraph buildVisibilityGraph(const GeoMap& map, const Vec2& start,
                                      double sample_res) {
     VisibilityGraph g;
 
-    // --- POIs always become nodes (even if they sit close to clearance) ---
     g.start_idx = g.addNode(start);
     g.victim_idx.reserve(victims.size());
     for (const auto& v : victims) g.victim_idx.push_back(g.addNode(v));
     g.gate_idx = g.addNode(gate);
 
-    // --- obstacle corner waypoints (inflated polygon vertices) ---
-    // node_buffer is slightly larger than map.clearance so that chords between
-    // adjacent corners of the same obstacle remain in free space.
+    // node_buffer > clearance keeps corner chords in free space.
     for (const auto& obs : map.obstacles) {
-        if (obs.is_circle) continue;  // circles have no corners; POIs route around
+        if (obs.is_circle) continue;
         const std::vector<Vec2> infl =
             inflatedPolygonVertices(obs.verts, node_buffer, map);
         for (const auto& q : infl) g.addNode(q);
     }
 
-    // --- edges: connect every pair whose connecting segment is clear ---
     const int n = static_cast<int>(g.nodes.size());
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {
@@ -54,7 +50,7 @@ void dijkstra(const VisibilityGraph& g, int src, std::vector<double>& dist,
     prev.assign(n, -1);
     if (src < 0 || src >= n) return;
 
-    using Item = std::pair<double, int>;  // (distance, node)
+    using Item = std::pair<double, int>;
     std::priority_queue<Item, std::vector<Item>, std::greater<Item>> pq;
     dist[src] = 0.0;
     pq.push({0.0, src});
@@ -62,7 +58,7 @@ void dijkstra(const VisibilityGraph& g, int src, std::vector<double>& dist,
     while (!pq.empty()) {
         const auto [d, u] = pq.top();
         pq.pop();
-        if (d > dist[u]) continue;  // stale entry
+        if (d > dist[u]) continue;
         for (int v : g.adj[u]) {
             const double w = dist2(g.nodes[u], g.nodes[v]);
             const double nd = d + std::sqrt(w);
@@ -85,7 +81,7 @@ std::vector<int> reconstructPath(int src, int dst,
         if (cur == src) break;
         cur = prev[cur];
     }
-    if (path.empty() || path.back() != src) return {};  // unreachable
+    if (path.empty() || path.back() != src) return {};
     std::reverse(path.begin(), path.end());
     return path;
 }

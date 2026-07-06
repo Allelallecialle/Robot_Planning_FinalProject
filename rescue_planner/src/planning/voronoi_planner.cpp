@@ -69,7 +69,6 @@ void VoronoiPlanner::step() {
 bool VoronoiPlanner::isPlanningDone() const { return planning_done; }
 
 void VoronoiPlanner::plan() {
-    // ---------- 1) clearance-aware geometry from the live world --------------
     comb::GeoMap map;
     map.clearance = robot_radius_ + safety_margin_;
     for (const auto& p : world_->borders.points)
@@ -102,13 +101,11 @@ void VoronoiPlanner::plan() {
     }
     const int n = static_cast<int>(victims.size());
 
-    // ---------- 2) build the Voronoi (GVD) roadmap ---------------------------
     const double t_road0 = nowMs();
     comb::VoronoiRoadmap vor = comb::buildVoronoiRoadmap(
         map_, start, victims, gate, voronoi_res_, thin_iters_, sample_res_);
     double roadmap_ms = nowMs() - t_road0;
 
-    // Timing safety-valve: retry once at a coarser grid if we blew 30 s.
     if (roadmap_ms > 30000.0) {
         ROS_WARN("[voronoi] roadmap build took %.1f ms (>30 s); retrying coarser.",
                  roadmap_ms);
@@ -135,11 +132,6 @@ void VoronoiPlanner::plan() {
         metrics_->roadmap_edges = edges;
     }
 
-    // ---------- 3-5) all-pairs Dijkstra + orienteering + Dubins --------------
-    // The orienteering budget bounds the STRAIGHT graph length, but the robot
-    // flies longer Dubins arcs; `dubins_safety` is only a fixed guess for that
-    // overhead. The real limit is that the FLYABLE trajectory must be coverable
-    // within the timeout: flyable_length <= v_max * victims_timeout.
     double Dmax =
         comb::distanceBudget(world_->victims_timeout, v_max_, dubins_safety_);
     const double flyable_budget =
@@ -153,10 +145,6 @@ void VoronoiPlanner::plan() {
                        op_method_, v_max_, k_max_, dt_, dubins_discretizations_,
                        sample_res_);
 
-    // Feedback: if the selected tour's flyable trajectory would overrun the
-    // timeout, tighten the graph budget in proportion to the observed overrun
-    // and re-plan. This drops the victims that do not actually fit in time, so
-    // the executed lap respects the timeout instead of exceeding it.
     for (int budget_iter = 0;
          budget_iter < 8 && std::isfinite(flyable_budget) && tour.feasible &&
          !tour.reference.empty() && tour.flyable_length > flyable_budget;
@@ -269,7 +257,6 @@ void VoronoiPlanner::visualize() {
     }
     if (vor.roadmap.nodes.empty()) return;
 
-    // Voronoi skeleton cells (green points).
     visualization_msgs::Marker skel;
     skel.header.frame_id = "map";
     skel.header.stamp = ros::Time::now();
@@ -284,7 +271,6 @@ void VoronoiPlanner::visualize() {
     }
     marker_pub_.publish(skel);
 
-    // Skeleton graph edges (grey line list).
     visualization_msgs::Marker edges;
     edges.header = skel.header;
     edges.ns = "voronoi_edges";
@@ -306,7 +292,6 @@ void VoronoiPlanner::visualize() {
     }
     marker_pub_.publish(edges);
 
-    // Selected flyable trajectory (red strip).
     visualization_msgs::Marker tr;
     tr.header = skel.header;
     tr.ns = "voronoi_path";

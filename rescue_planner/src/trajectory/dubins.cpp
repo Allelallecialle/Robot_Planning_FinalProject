@@ -13,7 +13,6 @@ double mod2pi(double theta) {
     return out;
 }
 
-// sinc(t) = sin(t)/t with Taylor fallback for small t (unnormalised sinc).
 static double sinc(double t) {
     if (std::fabs(t) < 0.002) {
         return 1.0 - (t * t) / 6.0 * (1.0 - (t * t) / 20.0);
@@ -35,7 +34,6 @@ static DubinsArc makeArc(double x0, double y0, double th0, double k, double L) {
     return arc;
 }
 
-// ---- scaling to/from the standard problem ----
 struct Scaled { double th0, thf, Kmax, lambda; };
 
 static Scaled scaleToStandard(double x0, double y0, double th0,
@@ -52,7 +50,6 @@ static Scaled scaleToStandard(double x0, double y0, double th0,
     return s;
 }
 
-// ---- the six primitives. Each returns feasibility + three scaled lengths. ----
 struct Prim { bool ok; double s1, s2, s3; };
 
 static Prim LSL(double th0, double thf, double K) {
@@ -144,7 +141,6 @@ static Prim LRL(double th0, double thf, double K) {
 DubinsCurve dubinsShortestPath(double x0, double y0, double th0,
                                double xf, double yf, double thf, double Kmax) {
     DubinsCurve curve;
-    // Coincident points have no defined Dubins manoeuvre.
     if (std::hypot(xf - x0, yf - y0) < 1e-9) return curve;
 
     const Scaled sc = scaleToStandard(x0, y0, th0, xf, yf, thf, Kmax);
@@ -152,12 +148,12 @@ DubinsCurve dubinsShortestPath(double x0, double y0, double th0,
     using PrimFn = Prim (*)(double, double, double);
     const PrimFn prims[6] = {LSL, RSR, LSR, RSL, RLR, LRL};
     static const int ksigns[6][3] = {
-        { 1,  0,  1},  // LSL
-        {-1,  0, -1},  // RSR
-        { 1,  0, -1},  // LSR
-        {-1,  0,  1},  // RSL
-        {-1,  1, -1},  // RLR
-        { 1, -1,  1},  // LRL
+        { 1,  0,  1},
+        {-1,  0, -1},
+        { 1,  0, -1},
+        {-1,  0,  1},
+        {-1,  1, -1},
+        { 1, -1,  1},
     };
 
     int pidx = -1;
@@ -174,7 +170,6 @@ DubinsCurve dubinsShortestPath(double x0, double y0, double th0,
     }
     if (pidx < 0) return curve;
 
-    // Scale lengths back and rebuild the three arcs at the real curvature.
     const double s1 = bs1 * sc.lambda;
     const double s2 = bs2 * sc.lambda;
     const double s3 = bs3 * sc.lambda;
@@ -202,8 +197,7 @@ void appendDiscretizedDubins(const DubinsCurve& curve, double v_max, double dt,
     const double sw0 = lengths[0] / v_max;
     const double sw1 = (lengths[0] + lengths[1]) / v_max;
 
-    // ZOH unicycle integration (matches unicycle.py): exact for piecewise
-    // constant (v, omega) over each dt using sinc-based midpoint update.
+    // ZOH unicycle integration with piecewise-constant (v, omega).
     double x = curve.a1.x0, y = curve.a1.y0, th = curve.a1.th0;
     double t = 0.0;
     while (t <= tf + 1e-12) {

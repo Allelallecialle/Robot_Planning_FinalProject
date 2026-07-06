@@ -10,7 +10,6 @@
 #include <sstream>
 #include <thread>
 
-//constructor definition
 RRT::RRT(ros::NodeHandle& nh){
     world_ = nullptr;
     marker_pub_ =
@@ -88,9 +87,7 @@ void RRT::step(){
        world_->gates.empty() || world_->borders.points.size() < 3)
         return;
 
-    // Build the ENTIRE tree up to its FIXED node budget in one shot, then plan
-    // exactly once. The node count therefore jumps straight to the fixed size
-    // and never grows sample-by-sample (and never past the budget).
+    // Build the full tree to the fixed node budget, then plan once.
     while(tree.size() < 1500){
         SamplePoint p = sampleRandomPoint(*world_);
 
@@ -125,7 +122,7 @@ void RRT::step(){
     if(!mission.feasible){
         ROS_WARN("No feasible rescue mission found on the fixed node budget "
                  "(%lu nodes); not sampling further.", tree.size());
-        planning_done = true;   // freeze: do not keep sampling more nodes
+        planning_done = true;  // freeze at fixed budget
         return;
     }
 
@@ -151,7 +148,6 @@ void RRT::step(){
 }
 
 void RRT::visualize(){
-   // to draw tree nodes on map
    visualization_msgs::Marker nodes;
 
     nodes.header.frame_id = "map";
@@ -179,7 +175,6 @@ void RRT::visualize(){
     }
     marker_pub_.publish(nodes);
 
-    //here edges
     visualization_msgs::Marker edges;
     edges.header.frame_id = "map";
     edges.header.stamp = ros::Time::now();
@@ -213,8 +208,6 @@ void RRT::visualize(){
     }
 
     marker_pub_.publish(edges);
-   //-----
-   // selected path visualization
    visualization_msgs::Marker path;
 
     path.header.frame_id = "map";
@@ -278,7 +271,7 @@ RoadmapGraph RRT::buildRoadmapGraph() const{
 
         g.adjacency[i].push_back(e);
 
-        // Undirected graph
+        // Undirected for Dijkstra.
         GraphEdge back;
         back.to = i;
         back.cost = e.cost;
@@ -295,7 +288,6 @@ void RRT::publishReference(const std::vector<comb::RefSample>& ref){
     publishRef(ref, pub);
 }
 
-// for benchmark
 bool RRT::isPlanningDone() const
 {
     return planning_done;

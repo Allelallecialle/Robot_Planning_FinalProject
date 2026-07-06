@@ -2,7 +2,6 @@
 #include <cmath>
 #include <algorithm>
 
-// Shortest distance from point (px,py) to the segment [(ax,ay),(bx,by)].
 static double pointToSegmentDistance(double px, double py,
                                      double ax, double ay,
                                      double bx, double by){
@@ -22,7 +21,6 @@ static double pointToSegmentDistance(double px, double py,
     return std::sqrt((px-cx)*(px-cx) + (py-cy)*(py-cy));
 }
 
-// Minimum distance from (x,y) to the boundary (edges) of a polygon.
 static double distanceToPolygonBoundary(double x, double y,
                                         const geometry_msgs::Polygon& polygon){
     double best = 1e18;
@@ -38,8 +36,7 @@ static double distanceToPolygonBoundary(double x, double y,
     return best;
 }
 
-// A disk of radius `clearance` centred at (x,y) collides with the cylinder when
-// the centre is within (obs.radius + clearance) of the cylinder centre.
+// Disk of radius clearance collides when centre is within obs.radius + clearance.
 bool pointInsideCylinder(double x, double y, const WorldModel::Obstacle& obs, double clearance){
     double cx = obs.polygon.points[0].x;
     double cy = obs.polygon.points[0].y;
@@ -52,8 +49,7 @@ bool pointInsideCylinder(double x, double y, const WorldModel::Obstacle& obs, do
     return dx*dx + dy*dy <= r*r;
 }
 
-// True if (x,y) is inside the (CCW) box, or within `clearance` of one of its
-// edges (i.e. the robot disk would overlap the box).
+// True if inside CCW box or within clearance of an edge.
 bool pointInsideBox(double x, double y, const WorldModel::Obstacle& obs, double clearance){
     const auto& pts = obs.polygon.points;
     int n = pts.size();
@@ -106,8 +102,6 @@ bool isInsideMap(double x,double y,const geometry_msgs::Polygon& polygon){
 bool isPointValid(double x, double y, const WorldModel& world){
     const double clearance = world.clearance;
 
-    // Must be inside the map, and (with clearance) far enough from every wall so
-    // the robot's body does not stick out of the arena.
     if(!isInsideMap(x, y, world.borders)){
         return false;
     }
@@ -135,7 +129,7 @@ bool isSegmentValid(double x1,double y1,double x2,double y2,const WorldModel& wo
     double dy = y2 - y1;
 
     double length = std::sqrt(dx*dx + dy*dy);
-    double resolution = 0.05;   // 5 cm
+    double resolution = 0.05;
     int steps = std::max(1, (int)(length / resolution));
 
     for(int i = 0; i <= steps; i++){

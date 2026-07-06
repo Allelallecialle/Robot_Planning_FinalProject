@@ -9,10 +9,6 @@ namespace comb {
 namespace {
 constexpr double kInf = std::numeric_limits<double>::infinity();
 
-// ---- EXACT: Held-Karp DP over victim subsets ------------------------------
-// dp[mask][i] = min distance to start at `start`, visit exactly `mask`, end at
-// victim i (bit i of mask set). Transition adds one unvisited victim. We then
-// close every (mask, i) to the gate and keep the max-value feasible solution.
 OrienteeringResult solveExact(const std::vector<std::vector<double>>& dist,
                               const std::vector<double>& values, double Dmax) {
     const int n = static_cast<int>(values.size());
@@ -20,7 +16,6 @@ OrienteeringResult solveExact(const std::vector<std::vector<double>>& dist,
     const int START = 0;
     const int GATE = n + 1;
 
-    // Baseline: collect nothing, go straight to the gate.
     if (dist[START][GATE] <= Dmax) {
         res.feasible = true;
         res.total_value = 0.0;
@@ -31,13 +26,11 @@ OrienteeringResult solveExact(const std::vector<std::vector<double>>& dist,
     const int full = 1 << n;
     std::vector<std::vector<double>> dp(full, std::vector<double>(n, kInf));
 
-    // Initialise single-victim states: start -> victim i.
     for (int i = 0; i < n; ++i) {
         const double d = dist[START][i + 1];
         if (d < kInf) dp[1 << i][i] = d;
     }
 
-    // Precompute the value of every subset incrementally.
     auto maskValue = [&](int mask) {
         double v = 0.0;
         for (int i = 0; i < n; ++i)
@@ -50,7 +43,6 @@ OrienteeringResult solveExact(const std::vector<std::vector<double>>& dist,
             if (!(mask & (1 << i))) continue;
             const double base = dp[mask][i];
             if (base == kInf) continue;
-            // Try to extend to an unvisited victim j.
             for (int j = 0; j < n; ++j) {
                 if (mask & (1 << j)) continue;
                 const double d = dist[i + 1][j + 1];
@@ -62,7 +54,6 @@ OrienteeringResult solveExact(const std::vector<std::vector<double>>& dist,
         }
     }
 
-    // Close to the gate and pick best (value first, then shorter length).
     for (int mask = 1; mask < full; ++mask) {
         const double val = maskValue(mask);
         for (int i = 0; i < n; ++i) {
@@ -80,7 +71,6 @@ OrienteeringResult solveExact(const std::vector<std::vector<double>>& dist,
                 res.feasible = true;
                 res.total_value = val;
                 res.total_length = total;
-                // Reconstruct order by backtracking the DP.
                 std::vector<int> order;
                 int cmask = mask, ci = i;
                 while (cmask) {
@@ -110,10 +100,9 @@ OrienteeringResult solveExact(const std::vector<std::vector<double>>& dist,
     return res;
 }
 
-// ---- HEURISTIC: greedy ratio insertion + 2-opt ----------------------------
 double routeLength(const std::vector<std::vector<double>>& dist,
                    const std::vector<int>& order, int gate) {
-    int prev = 0;  // start
+    int prev = 0;
     double len = 0.0;
     for (int v : order) {
         len += dist[prev][v + 1];
@@ -131,11 +120,9 @@ OrienteeringResult solveGreedy(const std::vector<std::vector<double>>& dist,
     res.feasible = (dist[0][GATE] <= Dmax);
     res.total_length = res.feasible ? dist[0][GATE] : kInf;
 
-    std::vector<int> order;            // current victim sequence (0-based)
+    std::vector<int> order;
     std::vector<bool> used(n, false);
 
-    // Greedy: repeatedly insert the victim/position giving the best
-    // value/extra-distance ratio while staying within budget.
     bool improved = true;
     while (improved) {
         improved = false;
@@ -165,8 +152,7 @@ OrienteeringResult solveGreedy(const std::vector<std::vector<double>>& dist,
         }
     }
 
-    // 2-opt local improvement: reverse sub-segments to shorten the route,
-    // which can free budget (never lowers value, so it can only help).
+    // 2-opt can shorten the route without lowering value.
     bool opt = true;
     while (opt && order.size() >= 2) {
         opt = false;
@@ -205,7 +191,6 @@ OrienteeringResult solveOrienteering(
     const int n = static_cast<int>(values.size());
     if (method == "exact") return solveExact(dist, values, Dmax);
     if (method == "greedy") return solveGreedy(dist, values, Dmax);
-    // auto
     if (n <= exact_limit) return solveExact(dist, values, Dmax);
     return solveGreedy(dist, values, Dmax);
 }

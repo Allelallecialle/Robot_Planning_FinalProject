@@ -28,7 +28,6 @@ double nowMs() {
 }  // namespace
 
 VisibilityPlanner::VisibilityPlanner(ros::NodeHandle& nh) {
-    // --- parameters (defaults mirror loco_nav's planner_base main) ---
     nh.param<std::string>("robot_name", robot_name_, std::string("limo0"));
     nh.param("robot_radius", robot_radius_, 0.20);
     nh.param("safety_margin", safety_margin_, 0.10);
@@ -55,9 +54,7 @@ void VisibilityPlanner::initialize(const WorldModel& world) {
 
 bool VisibilityPlanner::worldReady() const {
     if (world_ == nullptr) return false;
-    // We need the geometry, the goal, the robot start and the time budget.
-    // Obstacles/victims may legitimately be empty, but we wait until at least
-    // their first message arrived so we don't plan on a half-built world.
+    // Wait for first message on each topic so we do not plan on a half-built world.
     return world_->borders.points.size() >= 3 && !world_->gates.empty() &&
            world_->start_ready && world_->timeout_ready &&
            world_->obstacles_ready && world_->victims_ready;
@@ -66,7 +63,7 @@ bool VisibilityPlanner::worldReady() const {
 void VisibilityPlanner::step() {
     if (done_.load()) return;
     if (!worldReady()) return;
-    done_.store(true);  // plan exactly once
+    done_.store(true);
     plan();
     planning_done = true;
 }
@@ -77,15 +74,13 @@ bool VisibilityPlanner::isPlanningDone() const
 }
 
 void VisibilityPlanner::plan() {
-    // ---------- 1) build the clearance-aware geometry from the live world ----
     comb::GeoMap map;
     map.clearance = robot_radius_ + safety_margin_;
     for (const auto& p : world_->borders.points)
         map.border.push_back({p.x, p.y});
     for (const auto& obs : world_->obstacles) {
         comb::Obstacle o;
-        // Convention from send_obstacles.cpp: cylinder => 1 polygon point +
-        // radius>0; box/polygon => vertices and radius 0.
+        // send_obstacles convention: cylinder => 1 point + radius>0.
         if (obs.radius > 0.0 && obs.polygon.points.size() <= 1) {
             o.is_circle = true;
             o.center = {obs.polygon.points.empty() ? 0.0 : obs.polygon.points[0].x,
@@ -108,14 +103,13 @@ void VisibilityPlanner::plan() {
     std::vector<double> values;
     for (const auto& v : world_->victims) {
         victims.push_back({v.x, v.y});
-        values.push_back(v.value);  // value = weight (smuggled in radius field)
+        values.push_back(v.value);
     }
     const int n = static_cast<int>(victims.size());
 
     const double node_buffer =
         (node_buffer_ > 0.0) ? node_buffer_ : (map.clearance + 0.10);
 
-    // ---------- 2) build the visibility graph (roadmap) ----------------------
     const double t_road0 = nowMs();
     graph_ = comb::buildVisibilityGraph(map_, start, victims, gate, node_buffer,
                                         sample_res_);
@@ -132,30 +126,22 @@ void VisibilityPlanner::plan() {
         metrics_->roadmap_edges = edges;
     }
 
-    // ---------- 3) all-pairs shortest distances between POIs ------------------
     const double t_plan0 = nowMs();
-    std::vector<int> poi_node;  // graph index of each POI
+    std::vector<int> poi_node;
     poi_node.push_back(graph_.start_idx);
     for (int idx : graph_.victim_idx) poi_node.push_back(idx);
     poi_node.push_back(graph_.gate_idx);
-    const int P = static_cast<int>(poi_node.size());  // == n + 2
+    const int P = static_cast<int>(poi_node.size());
 
     std::vector<std::vector<double>> D(P, std::vector<double>(P, 0.0));
-    std::vector<std::vector<int>> prevs(P);  // dijkstra predecessor per POI
+    std::vector<std::vector<int>> prevs(P);
     for (int p = 0; p < P; ++p) {
         std::vector<double> dist;
         comb::dijkstra(graph_, poi_node[p], dist, prevs[p]);
         for (int q = 0; q < P; ++q) D[p][q] = dist[poi_node[q]];
     }
 
-    // ---------- 4-6) orienteering + Dubins with a FLYABLE-TIME feedback loop --
-    // The orienteering budget bounds the STRAIGHT graph length, but the robot
-    // flies longer Dubins arcs; `dubins_safety` is only a fixed guess for that
-    // overhead. The real limit is that the flyable trajectory must be coverable
-    // within the timeout (duration <= victims_timeout). So we pick victims,
-    // stitch the arcs, and if the trajectory overruns the timeout we tighten the
-    // graph budget in proportion and re-plan (dropping the victims that do not
-    // actually fit) instead of merely warning about the overrun.
+    // Tighten graph budget when flyable duration exceeds timeout.
     double Dmax =
         comb::distanceBudget(world_->victims_timeout, v_max_, dubins_safety_);
     const double flyable_budget =
@@ -169,7 +155,6 @@ void VisibilityPlanner::plan() {
     double traj_len = 0.0;
 
     for (int budget_iter = 0; budget_iter < 8; ++budget_iter) {
-        // ----- orienteering: pick victim subset & order -----
         op = comb::solveOrienteering(D, values, Dmax, op_method_);
         total_value_ = op.total_value;
         ROS_INFO("[visibility] orienteering: %s, selected %d/%d victims, "
@@ -190,11 +175,10 @@ void VisibilityPlanner::plan() {
             return;
         }
 
-        // ----- expand POI order into a geometric waypoint polyline -----
         std::vector<int> poi_order;
-        poi_order.push_back(0);                       // start
+        poi_order.push_back(0);
         for (int vi : op.victim_order) poi_order.push_back(vi + 1);
-        poi_order.push_back(P - 1);                   // gate
+        poi_order.push_back(P - 1);
 
         tour_nodes_.clear();
         for (size_t k = 0; k + 1 < poi_order.size(); ++k) {
@@ -221,12 +205,7 @@ void VisibilityPlanner::plan() {
             return;
         }
 
-        // ----- heading DP + Dubins stitching with clearance re-check -----
-        // Intermediate (victim) headings are free; start/gate headings are
-        // fixed. After stitching, each curved arc is re-sampled and verified
-        // against the ORIGINAL obstacles (real clearance): if a leg clips, we
-        // insert the midpoint of the offending straight segment (guaranteed
-        // clear) and re-optimise, which shrinks the bulging arc.
+        // Dubins arcs can bulge outside straight edges; re-check and subdivide legs.
         std::vector<comb::Vec2> pts = waypoints;
         const int max_subdiv = 12;
         for (int iter = 0; iter <= max_subdiv; ++iter) {
@@ -251,13 +230,12 @@ void VisibilityPlanner::plan() {
                 }
                 if (!clear) { bad_leg = static_cast<int>(i); break; }
 
-                // Append (skip first sample of non-initial legs to avoid dups).
                 for (size_t s = (i == 0 ? 0 : 1); s < leg.size(); ++s)
                     ref.push_back(leg[s]);
                 t_off = ref.empty() ? 0.0 : ref.back().t + dt_;
             }
 
-            if (bad_leg < 0) break;  // fully clear
+            if (bad_leg < 0) break;
             const comb::Vec2 mid{(pts[bad_leg].x + pts[bad_leg + 1].x) / 2.0,
                                  (pts[bad_leg].y + pts[bad_leg + 1].y) / 2.0};
             pts.insert(pts.begin() + bad_leg + 1, mid);
@@ -268,8 +246,6 @@ void VisibilityPlanner::plan() {
 
         traj_len = v_max_ * (ref.empty() ? 0.0 : ref.back().t);
 
-        // Accept if there is no time limit, the trajectory is empty, or it fits
-        // the timeout. Otherwise tighten the graph budget and re-plan.
         if (!std::isfinite(flyable_budget) || ref.empty() ||
             traj_len <= flyable_budget)
             break;
@@ -317,8 +293,7 @@ void VisibilityPlanner::publishReferenceAsync() {
     ros::Publisher pub = ref_pub_;
     const double dt = dt_;
 
-    // Stream the reference in (sim) real time, exactly like planner_base.py:
-    // one sample per dt, then a final message flagged plan_finished=true.
+    // Stream one sample per dt, then plan_finished=true (matches planner_base.py).
     std::thread([pub, ref, dt]() mutable {
         ros::Rate rate(1.0 / dt);
         for (const auto& s : ref) {
@@ -368,7 +343,6 @@ void VisibilityPlanner::visualize() {
     }
     if (nodes.empty()) return;
 
-    // graph edges (faint grey)
     visualization_msgs::Marker e;
     e.header.frame_id = "map";
     e.header.stamp = ros::Time::now();
@@ -387,7 +361,6 @@ void VisibilityPlanner::visualize() {
     }
     marker_pub_.publish(e);
 
-    // graph nodes (blue)
     visualization_msgs::Marker nd;
     nd.header = e.header;
     nd.ns = "visibility_nodes";
@@ -401,7 +374,6 @@ void VisibilityPlanner::visualize() {
     }
     marker_pub_.publish(nd);
 
-    // final flyable trajectory (red line)
     visualization_msgs::Marker tr;
     tr.header = e.header;
     tr.ns = "visibility_path";

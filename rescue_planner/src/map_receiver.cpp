@@ -49,9 +49,7 @@ void victimCallback(
 
         victim.x = victim_msg.polygon.points[0].x;
         victim.y = victim_msg.polygon.points[0].y;
-        // IMPORTANT: send_victims.cpp publishes the victim WEIGHT (reward) in
-        // the `radius` field ("the assigned value indicates the weight"). The
-        // physical victim disk radius is fixed (~0.5 m, rescue = reach centre).
+        // send_victims publishes reward in radius; physical radius is fixed.
         victim.value = victim_msg.radius;
         victim.radius = 0.5;
 
@@ -93,9 +91,6 @@ int main(int argc, char** argv){
     std::string robot_name;
     pnh.param<std::string>("robot_name", robot_name, std::string("limo0"));
 
-    // Robot clearance for the sampling collision checker (keeps the robot body
-    // clear of obstacles and walls). Mirrors the combinatorial planners'
-    // clearance = robot_radius + safety_margin. Set to 0 for a point robot.
     double robot_radius = 0.20;
     double safety_margin = 0.10;
     pnh.param("robot_radius", robot_radius, robot_radius);
@@ -130,7 +125,6 @@ int main(int argc, char** argv){
         bordersCallback
     );
 
-    // Robot start pose and rescue time budget (used by the combinatorial planner).
     ros::Subscriber odom_sub =
     nh.subscribe(
         "/" + robot_name + "/odom",

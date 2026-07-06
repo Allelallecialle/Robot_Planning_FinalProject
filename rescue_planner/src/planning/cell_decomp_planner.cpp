@@ -67,7 +67,7 @@ bool CellDecompPlanner::worldReady() const {
 void CellDecompPlanner::step() {
     if (done_.load()) return;
     if (!worldReady()) return;
-    done_.store(true);  // plan exactly once
+    done_.store(true);
     plan();
     planning_done = true;
 }
@@ -77,7 +77,6 @@ bool CellDecompPlanner::isPlanningDone() const { return planning_done; }
 void CellDecompPlanner::plan() {
     const char* tag = approx_ ? "cell_decomp_approx" : "cell_decomp";
 
-    // ---------- 1) clearance-aware geometry from the live world --------------
     comb::GeoMap map;
     map.clearance = robot_radius_ + safety_margin_;
     for (const auto& p : world_->borders.points)
@@ -110,7 +109,6 @@ void CellDecompPlanner::plan() {
     }
     const int n = static_cast<int>(victims.size());
 
-    // ---------- 2) build the cell-decomposition roadmap ----------------------
     const double t_road0 = nowMs();
     comb::CellDecomposition decomp =
         approx_ ? comb::buildApproxCellDecomposition(map_, start, victims, gate,
@@ -119,8 +117,7 @@ void CellDecompPlanner::plan() {
                                                sample_res_);
     double roadmap_ms = nowMs() - t_road0;
 
-    // Timing safety-valve: fall back to a coarser resolution once if the build
-    // blew the 30 s budget with default parameters.
+    // Retry once at coarser resolution if build exceeded 30 s.
     if (roadmap_ms > 30000.0) {
         ROS_WARN("[%s] roadmap build took %.1f ms (>30 s); retrying coarser.",
                  tag, roadmap_ms);
@@ -150,10 +147,6 @@ void CellDecompPlanner::plan() {
         metrics_->roadmap_edges = edges;
     }
 
-    // ---------- 3-5) all-pairs Dijkstra + orienteering + Dubins --------------
-    // The orienteering budget bounds the STRAIGHT graph length, but the robot
-    // flies longer Dubins arcs. The real limit is that the FLYABLE trajectory
-    // must be coverable within the timeout: flyable_length <= v_max * timeout.
     double Dmax =
         comb::distanceBudget(world_->victims_timeout, v_max_, dubins_safety_);
     const double flyable_budget =
@@ -167,9 +160,7 @@ void CellDecompPlanner::plan() {
                        op_method_, v_max_, k_max_, dt_, dubins_discretizations_,
                        sample_res_);
 
-    // Feedback: if the selected tour's flyable trajectory would overrun the
-    // timeout, tighten the graph budget in proportion to the observed overrun
-    // and re-plan, so the executed lap respects the timeout instead of it.
+    // Tighten graph budget when flyable length exceeds timeout.
     for (int budget_iter = 0;
          budget_iter < 8 && std::isfinite(flyable_budget) && tour.feasible &&
          !tour.reference.empty() && tour.flyable_length > flyable_budget;
@@ -205,7 +196,6 @@ void CellDecompPlanner::plan() {
             metrics_->success = false;
         }
         publishStats(roadmap_ms, planning_ms, 0.0, 0.0, 0);
-        // Publish one finished reference at the start so the controller stops.
         loco_planning::Reference msg;
         msg.x_d = start.x; msg.y_d = start.y; msg.theta_d = start_yaw;
         msg.v_d = 0.0; msg.omega_d = 0.0; msg.plan_finished = true;
@@ -300,7 +290,6 @@ void CellDecompPlanner::visualize() {
     }
     marker_pub_.publish(cells);
 
-    // Cell-adjacency edges (grey line list), skipping POI stubs for clarity.
     visualization_msgs::Marker edges;
     edges.header = cells.header;
     edges.ns = "cell_decomp_edges";
@@ -322,7 +311,6 @@ void CellDecompPlanner::visualize() {
     }
     marker_pub_.publish(edges);
 
-    // Points of interest (yellow spheres).
     visualization_msgs::Marker pois;
     pois.header = cells.header;
     pois.ns = "cell_decomp_pois";
@@ -341,7 +329,6 @@ void CellDecompPlanner::visualize() {
     pushPoi(g.gate_idx);
     marker_pub_.publish(pois);
 
-    // Selected flyable trajectory (red arrow trail approximated by a strip).
     visualization_msgs::Marker tr;
     tr.header = cells.header;
     tr.ns = "cell_decomp_path";

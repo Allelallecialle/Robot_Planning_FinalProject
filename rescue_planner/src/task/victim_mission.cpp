@@ -13,10 +13,7 @@
 MissionContext buildMissionContext(RoadmapGraph& roadmap, const WorldModel& world){
     MissionContext ctx;
 
-    // Add the POIs to the roadmap ONCE. Doing this here (rather than inside a
-    // budget re-solve) is what keeps the roadmap node count fixed across the
-    // flyable-time feedback loop -- the sampled node count set by the planner
-    // (e.g. 1500 for RRT, 500 for PRM) is not silently grown by re-planning.
+    // Add POIs once so budget re-solves keep the sampled node count fixed.
     int startNode =
         roadmap::addTemporaryNode(roadmap, world.start.x, world.start.y, world);
 
@@ -122,9 +119,7 @@ VictimMissionResult computeVictimMission(RoadmapGraph& roadmap, const WorldModel
     MissionContext ctx = buildMissionContext(roadmap, world);
 
     const double v_max = 0.3;
-    // Derating factor in (0, 1]: the flyable Dubins trajectory is always LONGER
-    // than the straight roadmap path, so the graph-distance budget must be
-    // SMALLER than v_max * timeout. Matches the combinatorial planners (0.85).
+    // Graph budget is derated: Dubins arcs exceed straight roadmap distance.
     const double dubins_safety = 0.85;
     const double budget =
         (budgetOverride >= 0.0)

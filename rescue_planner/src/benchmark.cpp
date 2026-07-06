@@ -97,9 +97,7 @@ void victimCallback(
 
         victim.x = victim_msg.polygon.points[0].x;
         victim.y = victim_msg.polygon.points[0].y;
-        // IMPORTANT: send_victims.cpp publishes the victim WEIGHT (reward) in
-        // the `radius` field ("the assigned value indicates the weight"). The
-        // physical victim disk radius is fixed (~0.5 m, rescue = reach centre).
+        // send_victims publishes reward in radius; physical radius is fixed.
         victim.value = victim_msg.radius;
         victim.radius = 0.5;
 
@@ -169,7 +167,6 @@ int main(int argc, char** argv){
         bordersCallback
     );
 
-    // Robot start pose and rescue time budget (used by the combinatorial planner).
     ros::Subscriber odom_sub =
     nh.subscribe(
         "/" + robot_name + "/odom",
@@ -255,8 +252,6 @@ int main(int argc, char** argv){
 
                 metrics.planning_time =
                     (ros::WallTime::now() - t0).toSec();
-
-                // `metrics.success` set by the planner itself (true only when feasible rescue tour/path was found); do not force it here.
 
                 saveMetrics(metrics);
 

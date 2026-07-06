@@ -186,14 +186,12 @@ VoronoiRoadmap buildVoronoiGraph(const VoronoiGrid& grid,
     out.grid = grid;
     out.skeleton = skeleton;
 
-    // POIs first (index convention: start, victims..., gate).
     out.roadmap.start_idx = out.roadmap.addNode(start);
     out.roadmap.victim_idx.reserve(victims.size());
     for (const auto& v : victims)
         out.roadmap.victim_idx.push_back(out.roadmap.addNode(v));
     out.roadmap.gate_idx = out.roadmap.addNode(gate);
 
-    // Skeleton cells become graph nodes.
     std::unordered_map<int, int> cell2node;
     cell2node.reserve(skeleton.size() * 2);
     for (int c : skeleton) {
@@ -205,7 +203,6 @@ VoronoiRoadmap buildVoronoiGraph(const VoronoiGrid& grid,
         out.skeleton_pts.push_back(p);
     }
 
-    // 8-connected skeleton cells become edges (verified with segmentClear).
     static const int di[8] = {1, -1, 0, 0, 1, 1, -1, -1};
     static const int dj[8] = {0, 0, 1, -1, 1, -1, 1, -1};
     for (int c : skeleton) {
@@ -219,7 +216,7 @@ VoronoiRoadmap buildVoronoiGraph(const VoronoiGrid& grid,
             auto it = cell2node.find(nc);
             if (it == cell2node.end()) continue;
             const int b = it->second;
-            if (b <= a) continue;  // add each undirected edge once
+            if (b <= a) continue;
             if (!segmentClear(out.roadmap.nodes[a], out.roadmap.nodes[b], map,
                               sample_res))
                 continue;
@@ -228,8 +225,7 @@ VoronoiRoadmap buildVoronoiGraph(const VoronoiGrid& grid,
         }
     }
 
-    // Connect every POI to the nearest skeleton node reachable by a clear
-    // segment; leave it isolated (OP distance +inf) if none is reachable.
+    // POI first, then nearest skeleton node by clear segment (isolated if none).
     auto connect = [&](int poi_idx) {
         const Vec2 p = out.roadmap.nodes[poi_idx];
         int best = -1;

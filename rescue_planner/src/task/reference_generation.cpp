@@ -32,7 +32,7 @@ std::vector<comb::RefSample> generateReferenceFromGraphPath(const RoadmapGraph& 
     // Same guard as comb::planTour on the combinatorial side.
     std::vector<comb::Vec2> pts = waypoints;
     const int max_subdiv = 12;
-    bool complete = false;   // did the WHOLE trajectory (start..gate) stitch clear?
+    bool complete = false;
 
     for(int iter = 0; iter <= max_subdiv; iter++){
         std::vector<double> headings =
@@ -81,7 +81,7 @@ std::vector<comb::RefSample> generateReferenceFromGraphPath(const RoadmapGraph& 
         }
 
         if(bad_leg < 0){
-            complete = true;   // the whole stitched trajectory is collision-free
+            complete = true;
             break;
         }
 
@@ -103,15 +103,12 @@ std::vector<comb::RefSample> generateReferenceFromGraphPath(const RoadmapGraph& 
 SamplingMissionPlan planSamplingMission(RoadmapGraph& roadmap, const WorldModel& world, double start_yaw){
     SamplingMissionPlan plan;
 
-    // v_max / dubins_safety must match computeVictimMission and
-    // generateReferenceFromGraphPath so the budget arithmetic stays consistent.
+    // v_max / dubins_safety must match computeVictimMission.
     const double v_max = 0.3;
     const double dubins_safety = 0.85;
     double budget = comb::distanceBudget(world.victims_timeout, v_max, dubins_safety);
 
-    // Build the POI context (adds the start/victim/gate nodes and the distance
-    // matrix) EXACTLY ONCE, so the re-solves below do NOT grow the roadmap: the
-    // sampled node count stays exactly what the planner generated.
+    // Build POI context once so budget re-solves do not grow the roadmap.
     MissionContext ctx = buildMissionContext(roadmap, world);
 
     plan.mission = solveMissionWithBudget(ctx, budget);
@@ -120,12 +117,7 @@ SamplingMissionPlan planSamplingMission(RoadmapGraph& roadmap, const WorldModel&
     plan.reference =
         generateReferenceFromGraphPath(roadmap, plan.mission.graph_path, start_yaw, world);
 
-    // Flyable-time feedback: reference.back().t is the trajectory DURATION (the
-    // arcs are sampled at v_max), so it overruns the timeout when it exceeds
-    // world.victims_timeout. Tighten the graph budget in proportion and re-select
-    // victims until the flyable lap fits (or the tour becomes infeasible). This
-    // only re-solves the orienteering on the fixed context -- it never re-samples
-    // or adds nodes.
+    // Tighten graph budget when flyable duration exceeds timeout; re-solve OP only.
     if(world.victims_timeout > 0){
         for(int it = 0;
             it < 8 && plan.mission.feasible && !plan.reference.empty() &&

@@ -71,9 +71,7 @@ void PRM::step(){
        world_->gates.empty() || world_->borders.points.size() < 3)
         return;
 
-    // Build the ENTIRE graph up to its FIXED node budget in one shot, then plan
-    // exactly once. The node count therefore jumps straight to the fixed size
-    // and never grows sample-by-sample (and never past the budget).
+    // Build the full graph to the fixed node budget, then plan once.
     while(graph.size() < 500){
         SamplePoint p = sampleRandomPoint(*world_);
         if(!isPointValid(p.x, p.y, *world_))
@@ -96,7 +94,6 @@ void PRM::step(){
     }
 
     roadmap_ = buildRoadmapGraph();
-    // --- for benchmark ----
     if(metrics_){
         metrics_->roadmap_nodes = roadmap_.nodes.size();
 
@@ -106,14 +103,13 @@ void PRM::step(){
 
         metrics_->roadmap_edges = edges;
     }
-    // -------------------
 
     auto plan = planSamplingMission(roadmap_, *world_, world_->start.yaw);
     const auto& mission = plan.mission;
     if(!mission.feasible){
         ROS_WARN("No feasible rescue mission found on the fixed node budget "
                  "(%lu nodes); not sampling further.", graph.size());
-        planning_done = true;   // freeze: do not keep sampling more nodes
+        planning_done = true;  // freeze at fixed budget
         return;
     }
 
@@ -123,14 +119,12 @@ void PRM::step(){
     ROS_INFO("Collected value %.2f", mission.collected_value);
     ROS_INFO("Waypoint count = %lu", mission.graph_path.size());
 
-    // --- for benchmark ----
     if(metrics_){
         metrics_->victims = mission.selected_victims.size();
         metrics_->path_length = mission.total_length;
         metrics_->score = mission.collected_value;
         metrics_->success = mission.feasible;
     }
-    // -------------------
 
     reference_ = plan.reference;
     ROS_INFO("Reference samples = %lu", reference_.size());
@@ -140,8 +134,6 @@ void PRM::step(){
 }
 
 void PRM::visualize(){
-
-    // to draw tree nodes on map
    visualization_msgs::Marker nodes;
 
     nodes.header.frame_id = "map";
@@ -169,7 +161,6 @@ void PRM::visualize(){
     }
     marker_pub_.publish(nodes);
 
-    //here edges
     visualization_msgs::Marker edges;
     edges.header.frame_id = "map";
     edges.header.stamp = ros::Time::now();
@@ -203,8 +194,6 @@ void PRM::visualize(){
     }
 
     marker_pub_.publish(edges);
-   //-----
-   // selected path visualization
    visualization_msgs::Marker path;
 
     path.header.frame_id = "map";
