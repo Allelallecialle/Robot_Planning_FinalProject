@@ -76,24 +76,26 @@ void RRTStar::step(){
        world_->gates.empty() || world_->borders.points.size() < 3)
         return;
 
-    SamplePoint p = sampleRandomPoint(*world_);
-    int nearest = nearestNode(p.x,p.y);
-    RRTNode node = steer(tree[nearest], p.x, p.y, 1.0);
-    std::vector<int> near = nearNodes(node.x, node.y, 2.0);
+    // Build the ENTIRE tree up to its FIXED node budget in one shot, then plan
+    // exactly once. The node count therefore jumps straight to the fixed size
+    // and never grows sample-by-sample (and never past the budget).
+    while(tree.size() < 1500){
+        SamplePoint p = sampleRandomPoint(*world_);
+        int nearest = nearestNode(p.x,p.y);
+        RRTNode node = steer(tree[nearest], p.x, p.y, 1.0);
+        std::vector<int> near = nearNodes(node.x, node.y, 2.0);
 
-    int best_parent = nearest;
-    double best_cost = tree[nearest].cost + distance(tree[nearest],node);
+        int best_parent = nearest;
+        double best_cost = tree[nearest].cost + distance(tree[nearest],node);
 
-    if(isSegmentValid(tree[best_parent].x, tree[best_parent].y, node.x, node.y, *world_)){
-        node.parent = best_parent;
-        node.cost = best_cost;
-        tree.push_back(node);
+        if(isSegmentValid(tree[best_parent].x, tree[best_parent].y, node.x, node.y, *world_)){
+            node.parent = best_parent;
+            node.cost = best_cost;
+            tree.push_back(node);
 
-        rewire(tree.size()-1, near);
+            rewire(tree.size()-1, near);
+        }
     }
-
-    if(tree.size() < 1500)
-        return;
 
     roadmap_ = buildRoadmapGraph();
     // --- for benchmark ----
@@ -112,7 +114,9 @@ void RRTStar::step(){
     const auto& mission = plan.mission;
 
     if(!mission.feasible){
-        ROS_WARN("No feasible rescue mission found.");
+        ROS_WARN("No feasible rescue mission found on the fixed node budget "
+                 "(%lu nodes); not sampling further.", tree.size());
+        planning_done = true;   // freeze: do not keep sampling more nodes
         return;
     }
 

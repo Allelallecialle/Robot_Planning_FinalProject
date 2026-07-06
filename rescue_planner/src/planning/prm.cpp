@@ -71,28 +71,29 @@ void PRM::step(){
        world_->gates.empty() || world_->borders.points.size() < 3)
         return;
 
-    SamplePoint p = sampleRandomPoint(*world_);
-    if(!isPointValid(p.x, p.y, *world_))
-        return;
-
-    PRMNode node;
-    node.x = p.x;
-    node.y = p.y;
-
-    std::vector<int> near = nearNodes(node.x, node.y, 2.0);
-    graph.push_back(node);
-    int new_index = graph.size()-1;
-    for(int idx : near){
-        if(!isSegmentValid(graph[idx].x, graph[idx].y, node.x, node.y, *world_)){
+    // Build the ENTIRE graph up to its FIXED node budget in one shot, then plan
+    // exactly once. The node count therefore jumps straight to the fixed size
+    // and never grows sample-by-sample (and never past the budget).
+    while(graph.size() < 500){
+        SamplePoint p = sampleRandomPoint(*world_);
+        if(!isPointValid(p.x, p.y, *world_))
             continue;
-        }
-        graph[idx].neighbours.push_back(new_index);
-        graph[new_index].neighbours.push_back(idx);
-    }
 
-    // wait enough generated nodes to run dijsktra
-    if(graph.size() < 500)
-        return;
+        PRMNode node;
+        node.x = p.x;
+        node.y = p.y;
+
+        std::vector<int> near = nearNodes(node.x, node.y, 2.0);
+        graph.push_back(node);
+        int new_index = graph.size()-1;
+        for(int idx : near){
+            if(!isSegmentValid(graph[idx].x, graph[idx].y, node.x, node.y, *world_)){
+                continue;
+            }
+            graph[idx].neighbours.push_back(new_index);
+            graph[new_index].neighbours.push_back(idx);
+        }
+    }
 
     roadmap_ = buildRoadmapGraph();
     // --- for benchmark ----
@@ -110,7 +111,9 @@ void PRM::step(){
     auto plan = planSamplingMission(roadmap_, *world_, world_->start.yaw);
     const auto& mission = plan.mission;
     if(!mission.feasible){
-        ROS_WARN("No feasible rescue mission found.");
+        ROS_WARN("No feasible rescue mission found on the fixed node budget "
+                 "(%lu nodes); not sampling further.", graph.size());
+        planning_done = true;   // freeze: do not keep sampling more nodes
         return;
     }
 
