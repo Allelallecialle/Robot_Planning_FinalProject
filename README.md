@@ -58,4 +58,60 @@ The data about the simulation is saved in the `benchmark.csv` in the `test_bench
 roslaunch rescue_planner benchmark.launch planner_type:=...
 ~~~
 
+## Testing
+
+The `rescue_planner` package includes a **gtest** suite (`test/test_rescue_planner.cpp`) that
+exercises the combinatorial planning modules (geometry, visibility graph, cell decomposition,
+Voronoi roadmap, orienteering, Dubins, and the shared tour pipeline) plus the sampling planners'
+raw collision checker. **No ROS master or simulation is required** — the tests build mock
+worlds in memory and call the planning logic directly.
+
+From inside the Docker container, after sourcing the workspace:
+
+~~~
+cd ros_ws
+source devel/setup.bash
+~~~
+
+**Build and run all tests** (recommended):
+
+~~~
+catkin_make run_tests
+~~~
+
+To run only the `rescue_planner` tests:
+
+~~~
+catkin_make run_tests_rescue_planner_gtest_test_rescue_planner
+~~~
+
+Or run the test binary directly (after `catkin_make`):
+
+~~~
+./devel/lib/rescue_planner/test_rescue_planner
+~~~
+
+If you use **catkin_tools** instead of `catkin_make`:
+
+~~~
+catkin build rescue_planner
+catkin test rescue_planner
+~~~
+
+A successful run prints `PASSED` for every test case and exits with code 0.
+
+**What is covered**
+
+| Area | Module / target |
+|------|-----------------|
+| Clearance geometry | `comb::geometry_utils` |
+| Shortest-path roadmap | `comb::visibility_graph` |
+| Cell decomposition | `comb::cell_decomposition` |
+| Maximum-clearance roadmap | `comb::voronoi_roadmap` |
+| Victim selection | `comb::orienteering` |
+| Flyable paths | `comb::dubins`, `comb::planTour` |
+| Sampling collision checks | `collision_checker` (teammate code, tests only) |
+
+The ROS planner nodes (`map_receiver`, launch files) are validated separately by running
+`roslaunch rescue_planner rescue_map.launch planner_type:=...` as described above.
 
