@@ -23,7 +23,7 @@ dock-other
 ## Running
 
 ### To run individual planners
-~~~
+
 Run the sample-based planners with roslaunch file. Default version with rrt:
 ~~~
 roslaunch rescue_planner rescue_map.launch
