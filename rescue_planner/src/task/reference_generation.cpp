@@ -1,13 +1,23 @@
 #include "task/reference_generation.hpp"
 
 #include <ros/ros.h>
-
+#include <cmath>
 #include "collision_checker.hpp"
 #include "utils/planning_budget.hpp"
+
+namespace {
+double yawFromQuat(const geometry_msgs::Quaternion& q) {
+    const double t0 = 2.0 * (q.w * q.z + q.x * q.y);
+    const double t1 = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+    return std::atan2(t0, t1);
+}
+}  // namespace
 
 std::vector<comb::RefSample> generateReferenceFromGraphPath(const RoadmapGraph& roadmap, const std::vector<int>& graph_path, double start_yaw, const WorldModel& world){
     std::vector<comb::RefSample> reference;
     std::vector<comb::Vec2> waypoints;
+    
+    const double gate_yaw = world.gates.empty() ? 0.0 : yawFromQuat(world.gates[0].orientation);
 
     for(int nodeId : graph_path){
         comb::Vec2 p;
@@ -36,7 +46,7 @@ std::vector<comb::RefSample> generateReferenceFromGraphPath(const RoadmapGraph& 
 
     for(int iter = 0; iter <= max_subdiv; iter++){
         std::vector<double> headings =
-            comb::optimizeHeadings(pts, start_yaw, 0.0, k_max, 72);
+            comb::optimizeHeadings(pts, start_yaw, gate_yaw, k_max, 72);
 
         reference.clear();
         double tOffset = 0.0;
