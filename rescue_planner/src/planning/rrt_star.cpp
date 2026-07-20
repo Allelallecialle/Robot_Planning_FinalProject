@@ -6,6 +6,8 @@
 #include "utils/reference_publisher.hpp"
 
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 #include <loco_planning/Reference.h>
 #include <sstream>
 #include <thread>
@@ -29,14 +31,14 @@ void RRTStar::initialize(const WorldModel& world){
     if(tree.empty()){
         RRTNode root;
 
-        root.x = 0;
-        root.y = 0;
+        root.x = world.start.x;
+        root.y = world.start.y;
         root.parent = -1;
         root.cost = 0.0;
 
         tree.push_back(root);
 
-        ROS_INFO("Root created");
+        ROS_INFO("Root created at (%.2f, %.2f)", root.x, root.y);
     }
 }
 
@@ -77,22 +79,100 @@ void RRTStar::step(){
         return;
 
     // Build the full tree to the fixed node budget, then plan once.
-    while(tree.size() < 1500){
-        SamplePoint p = sampleRandomPoint(*world_);
+//     while(tree.size() < 1500){
+//         SamplePoint p = sampleRandomPoint(*world_);
+//         int nearest = nearestNode(p.x,p.y);
+//         RRTNode node = steer(tree[nearest], p.x, p.y, 1.0);
+//         std::vector<int> near = nearNodes(node.x, node.y, 2.0);
+//
+//         int best_parent = nearest;
+//         double best_cost = tree[nearest].cost + distance(tree[nearest],node);
+//
+//         if(isSegmentValid(tree[best_parent].x, tree[best_parent].y, node.x, node.y, *world_)){
+//             node.parent = best_parent;
+//             node.cost = best_cost;
+//             tree.push_back(node);
+//
+//             rewire(tree.size()-1, near);
+//         }
+//     }
+    if(tree.empty())  // root not planted yet (waiting on start_ready)
+        return;
+
+    static bool rng_seeded = false;
+    if(!rng_seeded){ srand(time(nullptr)); rng_seeded = true; }
+
+    std::vector<SamplePoint> goals;
+    for(const auto& v : world_->victims) goals.push_back({v.x, v.y});
+    goals.push_back({world_->gates[0].position.x, world_->gates[0].position.y});
+
+    std::vector<bool> reached(goals.size(), false);
+    const double goal_tolerance = 1.0;
+    const double goal_bias = 0.1;
+    const std::size_t max_nodes = 1500;
+
+    auto allReached = [&](){
+        for(bool r : reached) if(!r) return false;
+        return true;
+    };
+    auto tryMarkReached = [&](int node_idx){
+        for(std::size_t g = 0; g < goals.size(); ++g){
+            if(reached[g]) continue;
+            const double dx = tree[node_idx].x - goals[g].x;
+            const double dy = tree[node_idx].y - goals[g].y;
+            if(std::sqrt(dx*dx + dy*dy) < goal_tolerance &&
+               isSegmentValid(tree[node_idx].x, tree[node_idx].y,
+                              goals[g].x, goals[g].y, *world_)){
+                reached[g] = true;
+            }
+        }
+    };
+    tryMarkReached(0);
+
+    // to stop the tree growth when the goal is reached exchange the 2 while conditions:
+    //while(tree.size() < max_nodes && !allReached()){
+
+    // grow the tree until the set number of nodes is reached
+    while(tree.size() < max_nodes){
+        SamplePoint p;
+        std::vector<std::size_t> pending;
+        for(std::size_t g = 0; g < goals.size(); ++g)
+            if(!reached[g]) pending.push_back(g);
+
+        if(!pending.empty() && (double)rand() / RAND_MAX < goal_bias){
+            p = goals[pending[rand() % pending.size()]];
+        } else {
+            p = sampleRandomPoint(*world_);
+        }
+
         int nearest = nearestNode(p.x,p.y);
         RRTNode node = steer(tree[nearest], p.x, p.y, 1.0);
+
+        if(!isSegmentValid(tree[nearest].x, tree[nearest].y, node.x, node.y, *world_))
+            continue;
+
         std::vector<int> near = nearNodes(node.x, node.y, 2.0);
 
+        // choose_parent: this was missing before -- new nodes were always
+        // parented to `nearest`, and `near` was only used to rewire OTHER
+        // nodes afterwards. That made this plain RRT + rewire, not real RRT*.
         int best_parent = nearest;
-        double best_cost = tree[nearest].cost + distance(tree[nearest],node);
-
-        if(isSegmentValid(tree[best_parent].x, tree[best_parent].y, node.x, node.y, *world_)){
-            node.parent = best_parent;
-            node.cost = best_cost;
-            tree.push_back(node);
-
-            rewire(tree.size()-1, near);
+        double best_cost = tree[nearest].cost + distance(tree[nearest], node);
+        for(int idx : near){
+            const double c = tree[idx].cost + distance(tree[idx], node);
+            if(c < best_cost &&
+               isSegmentValid(tree[idx].x, tree[idx].y, node.x, node.y, *world_)){
+                best_cost = c;
+                best_parent = idx;
+            }
         }
+
+        node.parent = best_parent;
+        node.cost = best_cost;
+        tree.push_back(node);
+
+        rewire(tree.size()-1, near);
+        tryMarkReached(static_cast<int>(tree.size()) - 1);
     }
 
     roadmap_ = buildRoadmapGraph();
