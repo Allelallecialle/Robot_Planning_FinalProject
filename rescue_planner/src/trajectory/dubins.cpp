@@ -6,6 +6,7 @@ namespace comb {
 
 static const double TWOPI = 2.0 * M_PI;
 
+//Wraps an angle into [0, 2*pi) interval values
 double mod2pi(double theta) {
     double out = theta;
     while (out < 0.0) out += TWOPI;
@@ -13,12 +14,16 @@ double mod2pi(double theta) {
     return out;
 }
 
+// sinc(t) = sin(t)/t util function, with a Taylor-series fallback near t=0 to avoid 0/0
 static double sinc(double t) {
     if (std::fabs(t) < 0.002) {
         return 1.0 - (t * t) / 6.0 * (1.0 - (t * t) / 20.0);
     }
     return std::sin(t) / t;
 }
+
+// formula of the unicycle model over arc length s:
+// (xdot = cos(th), ydot = sin(th), thetadot = k)
 
 void circline(double s, double x0, double y0, double th0, double k,
               double& x, double& y, double& th) {
@@ -27,6 +32,7 @@ void circline(double s, double x0, double y0, double th0, double k,
     th = mod2pi(th0 + k * s);
 }
 
+//Build the DubinsArc struct. Store the arc's parameters and its computed end pose
 static DubinsArc makeArc(double x0, double y0, double th0, double k, double L) {
     DubinsArc arc;
     arc.x0 = x0; arc.y0 = y0; arc.th0 = th0; arc.k = k; arc.L = L;
@@ -36,6 +42,7 @@ static DubinsArc makeArc(double x0, double y0, double th0, double k, double L) {
 
 struct Scaled { double th0, thf, Kmax, lambda; };
 
+// map the real problem (x0,y0,th0)->(xf,yf,thf) onto the canonical Dubins frame
 static Scaled scaleToStandard(double x0, double y0, double th0,
                               double xf, double yf, double thf, double Kmax) {
     const double dx = xf - x0;
@@ -44,12 +51,15 @@ static Scaled scaleToStandard(double x0, double y0, double th0,
     const double lambda = std::hypot(dx, dy) / 2.0;
     Scaled s;
     s.lambda = lambda;
-    s.Kmax = Kmax * lambda;
+    s.Kmax = Kmax * lambda; // curvature also scales with lambda
     s.th0 = mod2pi(th0 - phi);
     s.thf = mod2pi(thf - phi);
     return s;
 }
 
+// The 6 functions solve each of the Dubins words in the canonical frame.
+// Given (th0, thf, K) are returned the 3 normalized arc lengths (s1,s2,s3) for the specific L/R/S combination
+// or ok=false if the considered word is geometrically infeasible
 struct Prim { bool ok; double s1, s2, s3; };
 
 static Prim LSL(double th0, double thf, double K) {
@@ -138,22 +148,26 @@ static Prim LRL(double th0, double thf, double K) {
     return {true, s1, s2, s3};
 }
 
+// Computes the Dubins optimal path between two oriented poses (start and final).
+// Tries all 6 Dubins words, keeps the feasible one with the shortes total
+// length, rescales it back to world units, and materializes the 3 arcs
 DubinsCurve dubinsShortestPath(double x0, double y0, double th0,
                                double xf, double yf, double thf, double Kmax) {
     DubinsCurve curve;
-    if (std::hypot(xf - x0, yf - y0) < 1e-9) return curve;
+    if (std::hypot(xf - x0, yf - y0) < 1e-9) return curve;  // degenerate: same point
 
     const Scaled sc = scaleToStandard(x0, y0, th0, xf, yf, thf, Kmax);
 
     using PrimFn = Prim (*)(double, double, double);
     const PrimFn prims[6] = {LSL, RSR, LSR, RSL, RLR, LRL};
+    // Curvature sign of each of the 3 arcs for each word (0 = straight)
     static const int ksigns[6][3] = {
-        { 1,  0,  1},
-        {-1,  0, -1},
-        { 1,  0, -1},
-        {-1,  0,  1},
-        {-1,  1, -1},
-        { 1, -1,  1},
+        { 1,  0,  1},   // LSL
+        {-1,  0, -1},   // RSR
+        { 1,  0, -1},   // LSR
+        {-1,  0,  1},   // RSL
+        {-1,  1, -1},   // RLR
+        { 1, -1,  1},   // LRL
     };
 
     int pidx = -1;
@@ -168,8 +182,9 @@ DubinsCurve dubinsShortestPath(double x0, double y0, double th0,
             pidx = i;
         }
     }
-    if (pidx < 0) return curve;
+    if (pidx < 0) return curve; // no word feasibl, never happen for valid inputs
 
+    // Rescale arc lengths from the canonical frame
     const double s1 = bs1 * sc.lambda;
     const double s2 = bs2 * sc.lambda;
     const double s3 = bs3 * sc.lambda;
@@ -177,6 +192,7 @@ DubinsCurve dubinsShortestPath(double x0, double y0, double th0,
     const double k2 = ksigns[pidx][1] * Kmax;
     const double k3 = ksigns[pidx][2] * Kmax;
 
+    // Chain the 3 arcs in the real frame, each arc starts where the previous one ended
     curve.a1 = makeArc(x0, y0, th0, k1, s1);
     curve.a2 = makeArc(curve.a1.xf, curve.a1.yf, curve.a1.thf, k2, s2);
     curve.a3 = makeArc(curve.a2.xf, curve.a2.yf, curve.a2.thf, k3, s3);
@@ -185,6 +201,8 @@ DubinsCurve dubinsShortestPath(double x0, double y0, double th0,
     return curve;
 }
 
+// Convert a DubinsCurve into a list of timestamped RefSamples at fixed timestep dt,
+// for the trajectory tracker to follow. Speed set at v_max
 void appendDiscretizedDubins(const DubinsCurve& curve, double v_max, double dt,
                              double t_offset, std::vector<RefSample>& out) {
     if (!curve.valid) return;
@@ -193,9 +211,9 @@ void appendDiscretizedDubins(const DubinsCurve& curve, double v_max, double dt,
     const std::array<double, 3> omegas{curve.a1.k * v_max,
                                        curve.a2.k * v_max,
                                        curve.a3.k * v_max};
-    const double tf = (lengths[0] + lengths[1] + lengths[2]) / v_max;
-    const double sw0 = lengths[0] / v_max;
-    const double sw1 = (lengths[0] + lengths[1]) / v_max;
+    const double tf = (lengths[0] + lengths[1] + lengths[2]) / v_max;   // total duration
+    const double sw0 = lengths[0] / v_max;  // time of switch from arc1->arc2
+    const double sw1 = (lengths[0] + lengths[1]) / v_max;   // time of switch from arc2->arc3
 
     // ZOH unicycle integration with piecewise-constant (v, omega).
     double x = curve.a1.x0, y = curve.a1.y0, th = curve.a1.th0;
