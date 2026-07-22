@@ -41,6 +41,7 @@ double PRM::distance(const PRMNode& a, const PRMNode& b){
     return std::sqrt(dx*dx + dy*dy);
 }
 
+// nearest neighbor operation for the nodes. Uses Euclidean distance
 std::vector<int> PRM::nearNodes(double x, double y, double radius){
     std::vector<int> result;
 
@@ -63,15 +64,13 @@ void PRM::step(){
         return;
     }
 
-    // Do not sample/connect until the whole world has arrived. Otherwise nodes
-    // and edges built in the window before /obstacles is received ignore the
-    // obstacles and the roadmap ends up with edges that cut through them.
+    // Wait until the whole world has arrived
     if(!world_->obstacles_ready || !world_->victims_ready ||
        !world_->start_ready || !world_->timeout_ready ||
        world_->gates.empty() || world_->borders.points.size() < 3)
         return;
 
-    // Build the full graph to the fixed node budget, then plan once.
+    // Build the full graph to the fixed node budget, then plan once
     while(graph.size() < 500){
         SamplePoint p = sampleRandomPoint(*world_);
         if(!isPointValid(p.x, p.y, *world_))
@@ -81,9 +80,11 @@ void PRM::step(){
         node.x = p.x;
         node.y = p.y;
 
+        // Find close nodes in the set radius
         std::vector<int> near = nearNodes(node.x, node.y, 2.0);
         graph.push_back(node);
         int new_index = graph.size()-1;
+        // Check collision free of the segments with the close nodes found
         for(int idx : near){
             if(!isSegmentValid(graph[idx].x, graph[idx].y, node.x, node.y, *world_)){
                 continue;
@@ -246,19 +247,15 @@ RoadmapGraph PRM::buildRoadmapGraph() const{
         g.nodes.push_back(n);
     }
 
-    for(size_t i = 0; i < graph.size(); i++)
-    {
-        for(int neigh : graph[i].neighbours)
-        {
+    for(size_t i = 0; i < graph.size(); i++){
+        for(int neigh : graph[i].neighbours){
             GraphEdge e;
-
             e.to = neigh;
 
             double dx = graph[i].x - graph[neigh].x;
             double dy = graph[i].y - graph[neigh].y;
 
             e.cost = std::sqrt(dx*dx + dy*dy);
-
             g.adjacency[i].push_back(e);
         }
     }

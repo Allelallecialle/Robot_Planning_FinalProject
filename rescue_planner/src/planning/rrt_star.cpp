@@ -70,9 +70,7 @@ void RRTStar::step(){
     if(planning_done)
         return;
 
-    // Do not sample/connect until the whole world has arrived. Otherwise nodes
-    // and edges built in the window before /obstacles is received ignore the
-    // obstacles and the roadmap ends up with edges that cut through them.
+    // Wait until the whole world has arrived
     if(!world_->obstacles_ready || !world_->victims_ready ||
        !world_->start_ready || !world_->timeout_ready ||
        world_->gates.empty() || world_->borders.points.size() < 3)
@@ -96,7 +94,7 @@ void RRTStar::step(){
 //             rewire(tree.size()-1, near);
 //         }
 //     }
-    if(tree.empty())  // root not planted yet (waiting on start_ready)
+    if(tree.empty())  // root not planted yet (wait for start_ready above)
         return;
 
     static bool rng_seeded = false;
@@ -115,11 +113,13 @@ void RRTStar::step(){
         for(bool r : reached) if(!r) return false;
         return true;
     };
+    // Check unreached targets against the newly added node
     auto tryMarkReached = [&](int node_idx){
         for(std::size_t g = 0; g < goals.size(); ++g){
             if(reached[g]) continue;
             const double dx = tree[node_idx].x - goals[g].x;
             const double dy = tree[node_idx].y - goals[g].y;
+            // Check radius distance from closest node + collision free of the segment
             if(std::sqrt(dx*dx + dy*dy) < goal_tolerance &&
                isSegmentValid(tree[node_idx].x, tree[node_idx].y,
                               goals[g].x, goals[g].y, *world_)){
@@ -127,18 +127,27 @@ void RRTStar::step(){
             }
         }
     };
-    tryMarkReached(0);
+    tryMarkReached(0);  // A target might be next to the start
+
+
+    // Below, how the RRT* is built (same steps as the RRT+rewiring):
+    // - Find currently unreached targets
+    // - Choose: random sample or pending target depending on goal_bias
+    // - Find nearest tree node
+    // - Steer toward sample
+    // - Check segment collision to: add node or check if targets were reached
 
     // to stop the tree growth when the goal is reached exchange the 2 while conditions:
     //while(tree.size() < max_nodes && !allReached()){
-
-    // grow the tree until the set number of nodes is reached
+    // Grow the tree until the set number of nodes is reached
     while(tree.size() < max_nodes){
         SamplePoint p;
+         // List of targets not yet connected.
         std::vector<std::size_t> pending;
         for(std::size_t g = 0; g < goals.size(); ++g)
             if(!reached[g]) pending.push_back(g);
 
+        // In the % of goal_bias, the sample is directly chosen as one of the pending targets. Otherwise is random
         if(!pending.empty() && (double)rand() / RAND_MAX < goal_bias){
             p = goals[pending[rand() % pending.size()]];
         } else {
@@ -148,18 +157,20 @@ void RRTStar::step(){
         int nearest = nearestNode(p.x,p.y);
         RRTNode node = steer(tree[nearest], p.x, p.y, 1.0);
 
-        if(!isSegmentValid(tree[nearest].x, tree[nearest].y, node.x, node.y, *world_))
+        if(!isSegmentValid(tree[nearest].x, tree[nearest].y, node.x, node.y, *world_)){
             continue;
+        }
 
+        //RRT* saves also the other near nodes inside the set radius
         std::vector<int> near = nearNodes(node.x, node.y, 2.0);
 
-        // choose_parent: this was missing before -- new nodes were always
-        // parented to `nearest`, and `near` was only used to rewire OTHER
-        // nodes afterwards. That made this plain RRT + rewire, not real RRT*.
         int best_parent = nearest;
+        // Compute the total cost from the root to the new node "nearest"
         double best_cost = tree[nearest].cost + distance(tree[nearest], node);
+        // Test all the nearby nodes costs saved before
         for(int idx : near){
             const double c = tree[idx].cost + distance(tree[idx], node);
+            // A candidate new parent is valid if: gives a lower total cost+ collision free
             if(c < best_cost &&
                isSegmentValid(tree[idx].x, tree[idx].y, node.x, node.y, *world_)){
                 best_cost = c;
@@ -167,12 +178,18 @@ void RRTStar::step(){
             }
         }
 
+        // New node gets inserted with the best parent
         node.parent = best_parent;
         node.cost = best_cost;
         tree.push_back(node);
 
+        // rewiring to check if nearby nodes to the new just inserted could improve their path by using it as their parent
         rewire(tree.size()-1, near);
         tryMarkReached(static_cast<int>(tree.size()) - 1);
+    }
+
+    if (!allReached()) {
+        ROS_INFO("RRT* reached the node budget but not all targets were connected.");
     }
 
     roadmap_ = buildRoadmapGraph();
@@ -219,6 +236,7 @@ void RRTStar::step(){
 }
 
 void RRTStar::rewire(int new_node, const std::vector<int>& near){
+    // Check each node near the new one and, if cost is lower+no collision, rewire it to the new inserted
     for(int idx : near){
         double new_cost = tree[new_node].cost + distance(tree[new_node], tree[idx]);
 
@@ -369,15 +387,13 @@ void RRTStar::visualize(){
     marker_pub_.publish(path);
 }
 
-RoadmapGraph RRTStar::buildRoadmapGraph() const
-{
+RoadmapGraph RRTStar::buildRoadmapGraph() const{
     RoadmapGraph g;
 
     g.nodes.reserve(tree.size());
     g.adjacency.resize(tree.size());
 
-    for(const auto& node : tree)
-    {
+    for(const auto& node : tree){
         GraphNode n;
         n.x = node.x;
         n.y = node.y;
@@ -385,8 +401,7 @@ RoadmapGraph RRTStar::buildRoadmapGraph() const
         g.nodes.push_back(n);
     }
 
-    for(size_t i = 1; i < tree.size(); i++)
-    {
+    for(size_t i = 1; i < tree.size(); i++){
         int parent = tree[i].parent;
 
         GraphEdge e;

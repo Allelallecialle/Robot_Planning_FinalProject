@@ -40,6 +40,7 @@ void RRT::initialize(const WorldModel& world)
     }
 }
 
+// nearest neighbor operation for the nodes. Uses Euclidean distance
 int RRT::nearestNode(double x, double y){
     int best_index = 0;
     double best_distance = 1e9;
@@ -59,12 +60,14 @@ int RRT::nearestNode(double x, double y){
     return best_index;
 }
 
+// Avoid the tree to directly connect to an arbitrarily distant sample
 RRT::RRTNode RRT::steer(const RRTNode& nearest, double target_x, double target_y, double step_size){
     RRTNode new_node;
     double dx = target_x - nearest.x;
     double dy = target_y - nearest.y;
     double distance = std::sqrt(dx*dx + dy*dy);
 
+    // Check if sample is in the step distance. Insert it if close, else normalize and use the max step distance
     if(distance < step_size){
         new_node.x = target_x;
         new_node.y = target_y;
@@ -81,9 +84,7 @@ void RRT::step(){
     if(planning_done)
         return;
 
-    // Do not sample/connect until the whole world has arrived. Otherwise nodes
-    // and edges built in the window before /obstacles is received ignore the
-    // obstacles and the roadmap ends up with edges that cut through them.
+    // Wait until the whole world has arrived
     if(!world_->obstacles_ready || !world_->victims_ready ||
        !world_->start_ready || !world_->timeout_ready ||
        world_->gates.empty() || world_->borders.points.size() < 3)
@@ -102,49 +103,65 @@ void RRT::step(){
 //             tree.push_back(node);
 //         }
 //     }
-    if(tree.empty())  // root not planted yet (waiting on start_ready)
+    if(tree.empty())  // root not planted yet (wait for start_ready above)
         return;
 
     static bool rng_seeded = false;
-    if(!rng_seeded){ srand(time(nullptr)); rng_seeded = true; }
+    if(!rng_seeded){
+        srand(time(nullptr)); rng_seeded = true;
+    }
 
+    // Intialize the vector of goals (gates + victims). Used later to check if they're all connected to the tree
     std::vector<SamplePoint> goals;
-    for(const auto& v : world_->victims) goals.push_back({v.x, v.y});
+    for(const auto& v : world_->victims){
+        goals.push_back({v.x, v.y});
+    }
     goals.push_back({world_->gates[0].position.x, world_->gates[0].position.y});
 
-    std::vector<bool> reached(goals.size(), false);
-    const double goal_tolerance = 0.2;   // must be >= steer() step_size below
-    const double goal_bias = 0.1;        // fraction of samples aimed at a target
-    const std::size_t max_nodes = 1500;  // safety cap for unreachable targets
+    std::vector<bool> reached(goals.size(), false); // Set all goals to reached = false. When true it means: a tree node is close enough to the considered goal and the final segment to it is collision free.
+    const double goal_tolerance = 0.2;   // The radius distance for reaching the goal mentioned above
+    const double goal_bias = 0.1;        // Percentage of samples aimed at a target. So the tree is encouraged to grow toward mission relevant locations
+    const std::size_t max_nodes = 1500;  // Set number of nodes to grow. Safety cap for unreachable targets
 
     auto allReached = [&](){
         for(bool r : reached) if(!r) return false;
         return true;
     };
+    // Check unreached targets against the newly added node
     auto tryMarkReached = [&](int node_idx){
         for(std::size_t g = 0; g < goals.size(); ++g){
             if(reached[g]) continue;
             const double dx = tree[node_idx].x - goals[g].x;
             const double dy = tree[node_idx].y - goals[g].y;
+            // Check radius distance from closest node + collision free of the segment
             if(std::sqrt(dx*dx + dy*dy) < goal_tolerance &&
-               isSegmentValid(tree[node_idx].x, tree[node_idx].y,
-                              goals[g].x, goals[g].y, *world_)){
+               isSegmentValid(tree[node_idx].x, tree[node_idx].y, goals[g].x, goals[g].y, *world_)){
                 reached[g] = true;
             }
         }
     };
-    tryMarkReached(0);  // a target might already sit next to the start
+    tryMarkReached(0);  // a target might be next to the start
 
-    // to stop the tree growth when the goal is reached exchange the 2 while conditions:
+
+    // Below, how the RRT is built:
+    // - Find currently unreached targets
+    // - Choose: random sample or pending target depending on goal_bias
+    // - Find nearest tree node
+    // - Steer toward sample
+    // - Check segment collision to: add node or check if targets were reached
+
+    // To stop the tree growth when the goal is reached exchange the 2 while conditions:
     //while(tree.size() < max_nodes && !allReached()){
-
-    // grow the tree until the set number of nodes is reached
+    // Grow the tree until the set number of nodes is reached:
     while(tree.size() < max_nodes){
         SamplePoint p;
+
+        // List of targets not yet connected.
         std::vector<std::size_t> pending;
         for(std::size_t g = 0; g < goals.size(); ++g)
             if(!reached[g]) pending.push_back(g);
 
+        // In the % of goal_bias, the sample is directly chosen as one of the pending targets. Otherwise is random
         if(!pending.empty() && (double)rand() / RAND_MAX < goal_bias){
             p = goals[pending[rand() % pending.size()]];
         } else {
@@ -160,6 +177,11 @@ void RRT::step(){
             tree.push_back(node);
             tryMarkReached(static_cast<int>(tree.size()) - 1);
         }
+    }
+
+    // Send warning if not all targets could be connnected in the nodes budget set
+    if (!allReached()) {
+        ROS_WARN("RRT reached the node budget but not all targets were connected.");
     }
 
     roadmap_ = buildRoadmapGraph();
@@ -311,18 +333,15 @@ RoadmapGraph RRT::buildRoadmapGraph() const{
     g.nodes.reserve(tree.size());
     g.adjacency.resize(tree.size());
 
-    for(const auto& node : tree)
-    {
+    for(const auto& node : tree){
         GraphNode n;
         n.x = node.x;
         n.y = node.y;
         g.nodes.push_back(n);
     }
 
-    for(size_t i = 1; i < tree.size(); i++)
-    {
+    for(size_t i = 1; i < tree.size(); i++){
         GraphEdge e;
-
         e.to = tree[i].parent;
 
         double dx = tree[i].x - tree[tree[i].parent].x;
@@ -332,7 +351,7 @@ RoadmapGraph RRT::buildRoadmapGraph() const{
 
         g.adjacency[i].push_back(e);
 
-        // Undirected for Dijkstra.
+        // Undirected for Dijkstra
         GraphEdge back;
         back.to = i;
         back.cost = e.cost;
