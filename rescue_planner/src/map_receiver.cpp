@@ -12,6 +12,7 @@
 #include "planning/rrt.hpp"
 #include "planning/prm.hpp"
 #include "planning/rrt_star.hpp"
+#include "planning/rrg.hpp"
 #include "planning/visibility_planner.hpp"
 #include "planning/cell_decomp_planner.hpp"
 #include "planning/voronoi_planner.hpp"
@@ -158,6 +159,9 @@ int main(int argc, char** argv){
     }else if(planner_type=="rrt_star"){
         planner = std::make_unique<RRTStar>(pnh);
         ROS_INFO("RRT STAR SELECTED");
+    }else if(planner_type=="rrg"){
+        planner = std::make_unique<RRG>(pnh);
+        ROS_INFO("RRG SELECTED");
     }else if(planner_type=="visibility"){
         planner = std::make_unique<VisibilityPlanner>(pnh);
         ROS_INFO("VISIBILITY (COMBINATORIAL) SELECTED");

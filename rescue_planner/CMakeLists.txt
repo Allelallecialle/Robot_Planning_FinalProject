@@ -138,6 +138,7 @@ add_library(${PROJECT_NAME}_lib
     src/planning/rrt.cpp
     src/planning/prm.cpp
     src/planning/rrt_star.cpp
+    src/planning/rrg.cpp
     src/planning/visibility_planner.cpp
     src/planning/cell_decomp_planner.cpp     # combinatorial: cell decomposition
     src/planning/voronoi_planner.cpp         # combinatorial: Voronoi/GVD roadmap

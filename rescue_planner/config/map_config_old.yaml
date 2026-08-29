@@ -1,6 +1,6 @@
 # Instead of editing loco_nav/map_pkg/config/map_config.yaml, a copy
 #  is kept in the project folder and read with the launch argument
-#  map_env_params_file:=$(find rescue_planner)/config/map_config_ORIGINAL.yaml
+#     map_env_params_file:=$(find rescue_planner)/config/map_config_ORIGINAL.yaml
 #  It's already wired as the default in rescue_map.launch / benchmark.launch,
 #  so nothing inside the submodule is modified.
 
@@ -31,10 +31,10 @@
     n_victims: 0                 # 0 => only the victims listed below (no random ones)
     min_weight: 10               # only affects RANDOM victims
     max_weight: 500              # only affects RANDOM victims
-    vect_x: [ 4.0,  -4.0,  2.0,  6.0,  6.0,  5.0, -5.0, -6.0, -2.0,  2.0,  0.0, -1.5,  3.5, -6.5,  7.0 ]
-    vect_y: [ 0.0,   0.0,  6.0,  2.0, -2.0,  5.0,  5.0,  1.0, -6.0, -6.0,  4.0,  2.0, -4.5, -1.5,  0.0 ]
-    vect_weight: [ 470,   200,  150,  350,  180,   90,  130,  160,  170,  140,  100,   80,  325,   95,  250 ]
-    victims_timeout: 150   # Seconds to collect victims and reach the gate. 0 => auto
+    vect_x: [4.0, -4.0, 2.0]     # X position of each victim
+    vect_y: [0.0, 0.0, 6.0]      # Y position of each victim
+    vect_weight: [100, 200, 150] # Weight of each victim
+    victims_timeout: 140   # Seconds to collect victims and reach the gate. 0 => auto
 
 /**:
   ros__parameters:
