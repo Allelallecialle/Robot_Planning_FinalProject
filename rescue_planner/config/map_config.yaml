@@ -11,12 +11,12 @@
     no_boxes: false                               # only affects RANDOM obstacles
     max_size: 1.0                                 # only affects RANDOM obstacles
     min_size: 0.5                                 # only affects RANDOM obstacles
-    vect_type: ["box", "box", "cylinder", "cylinder"]  # "box" or "cylinder"
-    vect_x: [3.0, -3.0, 0.0, -4.0]               # X position of each obstacle
-    vect_y: [3.0, 3.0, -2.0, -4.0]               # Y position of each obstacle
-    vect_yaw: [0.0, 0.5, 0.0, 0.0]               # Yaw (rad); ignored for cylinders
-    vect_dim_x: [1.0, 1.5, 1.0, 0.8]             # box width / cylinder size
-    vect_dim_y: [1.0, 1.0, 1.0, 0.8]             # box height; ignored for cylinders
+    vect_type: ["box", "box", "cylinder", "cylinder", "box", "cylinder"]  # "box" or "cylinder"
+    vect_x: [3.0, -3.0, 0.0, -4.0, 3.5, -2.5]               # X position of each obstacle
+    vect_y: [3.0, 3.0, -2.0, -4.0, -2.0, 0.0]               # Y position of each obstacle
+    vect_yaw: [0.0, 0.5, 0.0, 0.0, 0.0, 0.0]               # Yaw (rad); ignored for cylinders
+    vect_dim_x: [1.0, 1.0, 1.0, 0.8, 1.0, 1.0]             # box width / cylinder size
+    vect_dim_y: [1.0, 1.0, 1.0, 0.8, 1.0, 1.0]             # box height; ignored for cylinders
 
 /**/send_gates:
   ros__parameters:
