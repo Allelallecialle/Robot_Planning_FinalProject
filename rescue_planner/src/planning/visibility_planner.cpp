@@ -181,6 +181,7 @@ void VisibilityPlanner::plan() {
         poi_order.push_back(P - 1);
 
         tour_nodes_.clear();
+        waypoints.clear();
         for (size_t k = 0; k + 1 < poi_order.size(); ++k) {
             const int a = poi_order[k];
             const int b = poi_order[k + 1];
@@ -192,14 +193,27 @@ void VisibilityPlanner::plan() {
             }
             for (size_t t = (tour_nodes_.empty() ? 0 : 1); t < seg.size(); ++t)
                 tour_nodes_.push_back(seg[t]);
+
+            // Per-leg line-of-sight simplification, same helper the Voronoi/
+            // Cell Decomp pipeline uses (task/tour_builder.cpp). On a
+            // visibility graph the shortest path is usually already taut, so
+            // this is close to a no-op here, but it keeps the trajectory
+            // stage consistent across every combinatorial planner and guards
+            // against near-duplicate vertices along the segment.
+            std::vector<comb::Vec2> leg;
+            leg.reserve(seg.size());
+            for (int idx : seg) leg.push_back(graph_.nodes[idx]);
+            const std::vector<comb::Vec2> simp = comb::simplifyLineOfSight(
+                leg,
+                [&](const comb::Vec2& p, const comb::Vec2& q) {
+                    return comb::segmentClear(p, q, map_, sample_res_);
+                });
+            for (size_t t = (waypoints.empty() ? 0 : 1); t < simp.size(); ++t) {
+                if (waypoints.empty() || comb::dist(waypoints.back(), simp[t]) > 1e-6)
+                    waypoints.push_back(simp[t]);
+            }
         }
 
-        waypoints.clear();
-        for (int idx : tour_nodes_) {
-            const comb::Vec2 p = graph_.nodes[idx];
-            if (waypoints.empty() || comb::dist(waypoints.back(), p) > 1e-6)
-                waypoints.push_back(p);
-        }
         if (waypoints.size() < 2) {
             ROS_WARN("[visibility] degenerate waypoint list; aborting.");
             return;

@@ -21,10 +21,14 @@
 #include "world_model.hpp"
 #include <fstream>
 
-void saveMetrics(const RunMetrics& m)
+// `filename` now comes from the "output_csv" ROS param (see main()) instead
+// of being hardcoded, so different experiment sweeps can be routed to
+// different CSVs (e.g. budget_sweep.csv, prm_node_sweep.csv, ...) just by
+// changing a launch argument, with no recompile. If the directory doesn't
+// exist yet, this will fail to open the file -- create it once up front
+// (`mkdir -p`) before launching a sweep into a new path.
+void saveMetrics(const RunMetrics& m, const std::string& filename)
 {
-    const std::string filename = "/root/project_ros_ws/src/Robot_Planning_FinalProject/rescue_planner/src/test_benchmark/benchmark.csv";
-
     bool header = false;
 
     std::ifstream in(filename);
@@ -33,10 +37,17 @@ void saveMetrics(const RunMetrics& m)
 
     std::ofstream file(filename,std::ios::app);
 
+    if(!file.is_open()){
+        ROS_ERROR_STREAM("Could not open benchmark CSV at [" << filename
+                         << "] -- does the directory exist? Metrics NOT saved.");
+        return;
+    }
+
     if(header)
     {
         file
         << "planner,"
+        << "run_tag,"
         << "init,"
         << "planning,"
         << "time_budget,"
@@ -50,6 +61,7 @@ void saveMetrics(const RunMetrics& m)
 
     file
         << m.planner << ","
+        << m.run_tag << ","
         << m.initialization_time << ","
         << m.planning_time << ","
         << m.time_budget << ","
@@ -63,7 +75,7 @@ void saveMetrics(const RunMetrics& m)
     file.flush();
     file.close();
 
-    ROS_INFO("Metrics saved");
+    ROS_INFO_STREAM("Metrics saved to " << filename);
 }
 
 WorldModel world;
@@ -140,6 +152,17 @@ int main(int argc, char** argv){
     std::string robot_name;
     pnh.param<std::string>("robot_name", robot_name, std::string("limo0"));
 
+    // Where to append this run's row, and how to label it. Both default to
+    // the old hardcoded behaviour (one shared file, no tag) if unset, so
+    // existing launch files keep working unchanged.
+    std::string output_csv;
+    std::string run_tag;
+    pnh.param<std::string>(
+        "output_csv", output_csv,
+        std::string("/root/project_ros_ws/src/Robot_Planning_FinalProject/"
+                    "rescue_planner/src/test_benchmark/benchmark.csv"));
+    pnh.param<std::string>("run_tag", run_tag, std::string(""));
+
     ros::Subscriber obstacle_sub =
     nh.subscribe(
         "/obstacles",
@@ -197,6 +220,7 @@ int main(int argc, char** argv){
 
     RunMetrics metrics;
     metrics.planner = planner_type;
+    metrics.run_tag = run_tag;
     bool initialized = false;
     ros::WallTime t0;
 
@@ -257,7 +281,7 @@ int main(int argc, char** argv){
                 metrics.planning_time =
                     (ros::WallTime::now() - t0).toSec();
 
-                saveMetrics(metrics);
+                saveMetrics(metrics, output_csv);
 
                 ROS_INFO("Benchmark completed.");
             }

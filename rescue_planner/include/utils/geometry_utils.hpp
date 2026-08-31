@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cmath>
+#include <functional>
 
 namespace comb {
 
@@ -45,5 +46,22 @@ bool segmentClear(const Vec2& a, const Vec2& b, const GeoMap& map,
 
 std::vector<Vec2> inflatedPolygonVertices(const std::vector<Vec2>& poly,
                                           double buffer, const GeoMap& map);
+
+// Greedy line-of-sight simplification of a polyline, preserving its two
+// endpoints. From the current vertex, jumps to the farthest later vertex
+// still reachable through `segmentValid` (a caller-supplied collision test,
+// so this works unchanged whether the underlying representation is a
+// comb::GeoMap or a WorldModel). Used to collapse a dense roadmap path
+// (grid/Voronoi cells, PRM/RRT/RRT*/RRG nodes) into the fewest safe
+// straight-line legs before Dubins fitting, instead of stitching an arc
+// between every intermediate roadmap node.
+//
+// IMPORTANT: call this per POI-to-POI leg, not on a whole multi-victim tour
+// at once -- it only guarantees the two endpoints of `poly` survive, so an
+// intermediate victim stop must be a leg endpoint of its own call, or the
+// shortcut search could jump straight over it.
+std::vector<Vec2> simplifyLineOfSight(
+    const std::vector<Vec2>& poly,
+    const std::function<bool(const Vec2&, const Vec2&)>& segmentValid);
 
 }  // namespace comb

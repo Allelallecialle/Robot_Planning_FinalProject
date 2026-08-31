@@ -4,6 +4,7 @@
 #include <cmath>
 #include "collision_checker.hpp"
 #include "utils/planning_budget.hpp"
+#include "utils/geometry_utils.hpp"
 
 namespace {
 double yawFromQuat(const geometry_msgs::Quaternion& q) {
@@ -13,7 +14,7 @@ double yawFromQuat(const geometry_msgs::Quaternion& q) {
 }
 }  // namespace
 
-std::vector<comb::RefSample> generateReferenceFromGraphPath(const RoadmapGraph& roadmap, const std::vector<int>& graph_path, double start_yaw, const WorldModel& world){
+std::vector<comb::RefSample> generateReferenceFromGraphPath(const RoadmapGraph& roadmap, const std::vector<int>& graph_path, const std::vector<int>& poi_path_nodes, double start_yaw, const WorldModel& world){
     std::vector<comb::RefSample> reference;
     std::vector<comb::Vec2> waypoints;
     
@@ -24,6 +25,56 @@ std::vector<comb::RefSample> generateReferenceFromGraphPath(const RoadmapGraph& 
         p.x = roadmap.nodes[nodeId].x;
         p.y = roadmap.nodes[nodeId].y;
         waypoints.push_back(p);
+    }
+
+    if(waypoints.size() < 2)
+        return reference;
+
+    // Line-of-sight simplification, per POI-to-POI leg (never across the
+    // whole multi-victim tour at once, so a required victim stop can't be
+    // shortcut past). This is the same helper Voronoi/Cell Decomposition use
+    // in task/tour_builder.cpp -- previously missing here, which let dense
+    // PRM/RRT/RRT*/RRG roadmap paths turn every intermediate sampled node
+    // into its own Dubins via-point instead of collapsing them into the
+    // fewest safe straight legs first.
+    if(poi_path_nodes.size() >= 2){
+        std::vector<std::size_t> boundary_idx;
+        boundary_idx.reserve(poi_path_nodes.size());
+        std::size_t search_from = 0;
+        for(int poi_node : poi_path_nodes){
+            for(std::size_t i = search_from; i < graph_path.size(); i++){
+                if(graph_path[i] == poi_node){
+                    boundary_idx.push_back(i);
+                    search_from = i + 1;
+                    break;
+                }
+            }
+        }
+
+        if(boundary_idx.size() == poi_path_nodes.size()){
+            std::vector<comb::Vec2> simplified;
+            for(std::size_t k = 0; k + 1 < boundary_idx.size(); k++){
+                std::vector<comb::Vec2> leg(
+                    waypoints.begin() + boundary_idx[k],
+                    waypoints.begin() + boundary_idx[k + 1] + 1);
+
+                const std::vector<comb::Vec2> simp = comb::simplifyLineOfSight(
+                    leg,
+                    [&](const comb::Vec2& a, const comb::Vec2& b){
+                        return isSegmentValid(a.x, a.y, b.x, b.y, world);
+                    });
+
+                for(std::size_t t = (simplified.empty() ? 0 : 1); t < simp.size(); t++)
+                    simplified.push_back(simp[t]);
+            }
+            waypoints = simplified;
+        } else {
+            // Should not happen (every POI is a graph_path node by
+            // construction), but fail safe rather than silently mis-simplify.
+            ROS_WARN("[sampling] could not resolve all POI leg boundaries "
+                     "(%lu/%lu found); skipping simplification.",
+                     boundary_idx.size(), poi_path_nodes.size());
+        }
     }
 
     if(waypoints.size() < 2)
@@ -125,7 +176,8 @@ SamplingMissionPlan planSamplingMission(RoadmapGraph& roadmap, const WorldModel&
     if(!plan.mission.feasible)
         return plan;
     plan.reference =
-        generateReferenceFromGraphPath(roadmap, plan.mission.graph_path, start_yaw, world);
+        generateReferenceFromGraphPath(roadmap, plan.mission.graph_path,
+                                       plan.mission.poi_path_nodes, start_yaw, world);
 
     // Tighten graph budget when flyable duration exceeds timeout; re-solve OP only.
     if(world.victims_timeout > 0){
@@ -142,7 +194,8 @@ SamplingMissionPlan planSamplingMission(RoadmapGraph& roadmap, const WorldModel&
             if(!plan.mission.feasible)
                 break;
             plan.reference =
-                generateReferenceFromGraphPath(roadmap, plan.mission.graph_path, start_yaw, world);
+                generateReferenceFromGraphPath(roadmap, plan.mission.graph_path,
+                                               plan.mission.poi_path_nodes, start_yaw, world);
         }
     }
 

@@ -19,8 +19,17 @@
   <arg name="elements_models_path" default="$(find map_pkg)/models" />
   <arg name="gazebo_models_path" default="$(find map_pkg)/worlds" />
 
-  <!-- planner_type: prm | rrt | rrt_star (sampling-based) | visibility (combinatorial) -->
+  <!-- planner_type: prm | rrt | rrt_star | rrg (sampling-based) | visibility | cell_decomp | cell_decomp_approx | voronoi (combinatorial) -->
   <arg name="planner_type" default="rrt"/>
+  <!-- Where this run's row gets appended. Point different sweeps at different
+       files (e.g. $(find rescue_planner)/src/test_benchmark/prm_node_sweep.csv)
+       instead of recompiling / all landing in one shared benchmark.csv.
+       The target directory must already exist. -->
+  <arg name="output_csv" default="$(find rescue_planner)/src/test_benchmark/benchmark.csv"/>
+  <!-- Free-form label for this run, e.g. "budget_140s" or "prm_nodes_1000",
+       written as its own CSV column so rows from several sweeps sharing one
+       file can still be told apart when aggregating. -->
+  <arg name="run_tag" default=""/>
   <arg name="x_pos" default="0.0" />
   <arg name="y_pos" default="0.0" />
   <arg name="yaw_pos" default="0.0" />
@@ -87,6 +96,8 @@
       name="benchmark"
       output="screen">
       <param name="planner_type" value="$(arg planner_type)"/>
+      <param name="output_csv" value="$(arg output_csv)"/>
+      <param name="run_tag" value="$(arg run_tag)"/>
   </node>
 
   <!-- RViz (optional) -->

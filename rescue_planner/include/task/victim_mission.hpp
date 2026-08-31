@@ -12,6 +12,12 @@ struct VictimMissionResult
     std::vector<int> selected_victims;
     double collected_value = 0.0;
     double total_length = 0.0;
+
+    // Roadmap node id of every visited POI (start, selected victims in visiting
+    // order, gate), i.e. the leg boundaries within graph_path. Needed downstream
+    // so per-leg line-of-sight simplification never shortcuts across a required
+    // victim stop -- see generateReferenceFromGraphPath.
+    std::vector<int> poi_path_nodes;
 };
 
 struct MissionContext

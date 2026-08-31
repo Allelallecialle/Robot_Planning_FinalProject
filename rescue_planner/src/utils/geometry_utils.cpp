@@ -132,4 +132,21 @@ std::vector<Vec2> inflatedPolygonVertices(const std::vector<Vec2>& poly,
     return out;
 }
 
+std::vector<Vec2> simplifyLineOfSight(
+    const std::vector<Vec2>& poly,
+    const std::function<bool(const Vec2&, const Vec2&)>& segmentValid) {
+    if (poly.size() <= 2) return poly;
+    std::vector<Vec2> out;
+    out.push_back(poly.front());
+    std::size_t i = 0;
+    const std::size_t n = poly.size();
+    while (i < n - 1) {
+        std::size_t j = n - 1;
+        while (j > i + 1 && !segmentValid(poly[i], poly[j])) --j;
+        out.push_back(poly[j]);
+        i = j;
+    }
+    return out;
+}
+
 }  // namespace comb

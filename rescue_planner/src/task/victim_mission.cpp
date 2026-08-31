@@ -153,6 +153,13 @@ VictimMissionResult solveMissionWithBudget(const MissionContext& ctx, double bud
     mission.collected_value = result.total_value;
     mission.total_length = result.total_length;
 
+    // Record the roadmap node id of every POI stop, in visiting order, so
+    // downstream simplification can split graph_path back into per-leg
+    // chunks instead of simplifying the whole multi-victim tour at once.
+    mission.poi_path_nodes.reserve(poiOrder.size());
+    for(int p : poiOrder)
+        mission.poi_path_nodes.push_back(ctx.poi[p]);
+
     return mission;
 }
 

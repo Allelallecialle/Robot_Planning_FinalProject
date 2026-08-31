@@ -11,29 +11,20 @@ namespace comb {
 
 namespace {
 
-// Greedy line-of-sight simplification of a roadmap sub-path, preserving the two
-// endpoints (which are the points of interest that MUST be visited). From the
-// current vertex we jump to the farthest later vertex still reachable by a
-// clearance-safe straight segment. This is essential for the dense grid-based
-// roadmaps (Voronoi): stitching bounded-curvature Dubins arcs between hundreds
-// of ~cell-spaced waypoints would explode the path length; every retained
-// shortcut still keeps clearance >= r_c (segmentClear), so the pruned polyline
-// remains collision-safe.
-std::vector<Vec2> simplifyLineOfSight(const std::vector<Vec2>& poly,
-                                      const GeoMap& map, double sample_res) {
-    if (poly.size() <= 2) return poly;
-    std::vector<Vec2> out;
-    out.push_back(poly.front());
-    std::size_t i = 0;
-    const std::size_t n = poly.size();
-    while (i < n - 1) {
-        std::size_t j = n - 1;
-        while (j > i + 1 && !segmentClear(poly[i], poly[j], map, sample_res))
-            --j;
-        out.push_back(poly[j]);
-        i = j;
-    }
-    return out;
+// Thin wrapper binding the shared simplifyLineOfSight (geometry_utils.hpp) to
+// this planner's clearance-aware segment test, so call sites below don't have
+// to build the lambda themselves every time. This used to be its own
+// duplicated copy of the simplification algorithm; it's now the single
+// implementation, also reused by the sampling-based planners'
+// reference_generation.cpp so both pipelines prune dense roadmap paths the
+// same way before Dubins fitting.
+std::vector<Vec2> simplifyLegLineOfSight(const std::vector<Vec2>& poly,
+                                         const GeoMap& map, double sample_res) {
+    return simplifyLineOfSight(
+        poly,
+        [&](const Vec2& a, const Vec2& b) {
+            return segmentClear(a, b, map, sample_res);
+        });
 }
 
 }  // namespace
@@ -71,7 +62,7 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
             segpts.reserve(seg.size());
             for (int idx : seg) segpts.push_back(graph.nodes[idx]);
             const std::vector<Vec2> simp =
-                simplifyLineOfSight(segpts, map, sample_res);
+                simplifyLegLineOfSight(segpts, map, sample_res);
             double len = 0.0;
             for (std::size_t k = 0; k + 1 < simp.size(); ++k)
                 len += dist(simp[k], simp[k + 1]);
@@ -104,7 +95,7 @@ TourResult planTour(const Roadmap& graph, const GeoMap& map, double start_yaw,
         segpts.reserve(seg.size());
         for (int idx : seg) segpts.push_back(graph.nodes[idx]);
         const std::vector<Vec2> simp =
-            simplifyLineOfSight(segpts, map, sample_res);
+            simplifyLegLineOfSight(segpts, map, sample_res);
 
         for (std::size_t t = (waypoints.empty() ? 0 : 1); t < simp.size(); ++t) {
             if (waypoints.empty() || dist(waypoints.back(), simp[t]) > 1e-6)

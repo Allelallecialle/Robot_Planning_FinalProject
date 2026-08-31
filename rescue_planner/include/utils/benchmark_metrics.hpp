@@ -5,6 +5,11 @@
 struct RunMetrics
 {
     std::string planner;
+    // Free-form label for the current experiment group/config, e.g.
+    // "budget_140s", "prm_nodes_1000", "voronoi_res_0.05" -- lets several
+    // sweeps share one CSV (or several CSVs) and still be told apart when
+    // aggregating, without having to relaunch with different filenames.
+    std::string run_tag;
 
     double initialization_time = 0.0;
     double planning_time = 0.0;
