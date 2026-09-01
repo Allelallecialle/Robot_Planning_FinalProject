@@ -105,7 +105,7 @@ void RRTStar::step(){
     goals.push_back({world_->gates[0].position.x, world_->gates[0].position.y});
 
     std::vector<bool> reached(goals.size(), false);
-    const double goal_tolerance = 1.0;
+    const double goal_tolerance = 0.2;
     const double goal_bias = 0.1;
     const std::size_t max_nodes = 1500;
 
@@ -138,9 +138,9 @@ void RRTStar::step(){
     // - Check segment collision to: add node or check if targets were reached
 
     // to stop the tree growth when the goal is reached exchange the 2 while conditions:
-    //while(tree.size() < max_nodes && !allReached()){
+    while(tree.size() < max_nodes && !allReached()){
     // Grow the tree until the set number of nodes is reached
-    while(tree.size() < max_nodes){
+    //while(tree.size() < max_nodes){
         SamplePoint p;
          // List of targets not yet connected.
         std::vector<std::size_t> pending;

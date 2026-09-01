@@ -151,9 +151,9 @@ void RRT::step(){
     // - Check segment collision to: add node or check if targets were reached
 
     // To stop the tree growth when the goal is reached exchange the 2 while conditions:
-    //while(tree.size() < max_nodes && !allReached()){
+    while(tree.size() < max_nodes && !allReached()){
     // Grow the tree until the set number of nodes is reached:
-    while(tree.size() < max_nodes){
+    //while(tree.size() < max_nodes){
         SamplePoint p;
 
         // List of targets not yet connected.

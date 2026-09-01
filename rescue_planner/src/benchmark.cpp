@@ -155,13 +155,24 @@ int main(int argc, char** argv){
     // Where to append this run's row, and how to label it. Both default to
     // the old hardcoded behaviour (one shared file, no tag) if unset, so
     // existing launch files keep working unchanged.
-    std::string output_csv;
+    std::string output_filename;
     std::string run_tag;
+
     pnh.param<std::string>(
-        "output_csv", output_csv,
-        std::string("/root/project_ros_ws/src/Robot_Planning_FinalProject/"
-                    "rescue_planner/src/test_benchmark/benchmark.csv"));
-    pnh.param<std::string>("run_tag", run_tag, std::string(""));
+        "output_csv",
+        output_filename,
+        "benchmark.csv");
+
+    pnh.param<std::string>(
+        "run_tag",
+        run_tag,
+        "");
+
+    const std::string benchmark_dir =
+        "/root/project_ros_ws/src/Robot_Planning_FinalProject/"
+        "rescue_planner/src/test_benchmark/";
+
+    std::string output_csv = benchmark_dir + output_filename;
 
     ros::Subscriber obstacle_sub =
     nh.subscribe(

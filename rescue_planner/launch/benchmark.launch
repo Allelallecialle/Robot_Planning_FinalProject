@@ -25,7 +25,7 @@
        files (e.g. $(find rescue_planner)/src/test_benchmark/prm_node_sweep.csv)
        instead of recompiling / all landing in one shared benchmark.csv.
        The target directory must already exist. -->
-  <arg name="output_csv" default="$(find rescue_planner)/src/test_benchmark/benchmark.csv"/>
+  <arg name="output_csv" default="benchmark.csv"/>
   <!-- Free-form label for this run, e.g. "budget_140s" or "prm_nodes_1000",
        written as its own CSV column so rows from several sweeps sharing one
        file can still be told apart when aggregating. -->
