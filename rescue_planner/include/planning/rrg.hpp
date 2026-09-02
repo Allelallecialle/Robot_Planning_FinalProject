@@ -12,14 +12,10 @@
 #include "trajectory/dubins_dp.hpp"
 
 // RRG (Rapidly-exploring Random Graph), Karaman & Frazzoli, "Sampling-based
-// Algorithms for Optimal Motion Planning" (2011). Structurally identical
+// Algorithms for Optimal Motion Planning". Structurally identical
 // growth procedure to RRT (same nearestNode/steer/goal-biased sampling), but
-// every accepted node connects to ALL nearby collision-free nodes within a
-// shrinking radius r_n, not just its nearest neighbor -- producing a properly
-// connected roadmap graph natively, instead of a bare tree that needs a
-// separate densification pass to be usable for multi-POI Dijkstra queries
-// (see RRT/RRT* for that patched-on approach; this planner is the "do it
-// right from the start" alternative).
+// every accepted node connects to all nearby collision free nodes within a
+// shrinking radius r_n
 class RRG : public Planner{
 public:
 
@@ -38,9 +34,8 @@ private:
     {
         double x;
         double y;
-        int parent;  // kept ONLY for visualize()'s tree rendering; the real
-                     // graph structure lives in adjacency_, not in parent
-                     // pointers (unlike RRT/RRT*, this is a graph, not a tree)
+        int parent;  // kept for visualize()'s tree rendering. The real
+                     // graph structure lives in adjacency_, this is a graph, not a tree
     };
 
     std::vector<RRGNode> tree;
@@ -50,10 +45,6 @@ private:
     ros::Publisher ref_pub_;
     std::vector<int> selected_path_;
     RoadmapGraph roadmap_;
-    // RRG adjacency, built INCREMENTALLY during step(): each new node
-    // connects to its nearest node AND to every other node within the
-    // shrinking connection radius r_n that has a collision-free line of
-    // sight. This IS the graph handed to Dijkstra
     std::vector<std::vector<GraphEdge>> adjacency_;
 
     int nearestNode(double x, double y);

@@ -27,8 +27,6 @@ RRG::RRG(ros::NodeHandle& nh){
 void RRG::initialize(const WorldModel& world)
 {
     world_ = &world;
-    // Wait for odometry: rooting before start_ready would plant the graph at
-    // the Pose{} default (0,0), not the robot's real starting position.
     if(tree.empty() && world.start_ready){
         RRGNode root;
 
@@ -90,19 +88,17 @@ void RRG::step(){
        world_->gates.empty() || world_->borders.points.size() < 3)
         return;
 
-    if(tree.empty())  // root not planted yet (waiting on start_ready)
+    if(tree.empty())  // root not planted yet (waiting start_ready)
         return;
 
-    // Grow toward the mission targets (victims + gate), same
-    // goal biased sampling idea as RRT/RRT* but generalised to multiple targets
-    // since this is a multigoal orienteering mission and not a single goal query
+    // Grow toward the mission targets (victims + gate), same goal biased sampling idea as RRT/RRT*
     static bool rng_seeded = false;
     if(!rng_seeded){
         srand(time(nullptr));
         rng_seeded = true;
     }
 
-    // Intialize the vector of goals (gates + victims). Used later to check if they're all connected to the tree
+    // Intialize the vector of goals (gates + victims). Used later to check if they're all connected
     std::vector<SamplePoint> goals;
     for(const auto& v : world_->victims) goals.push_back({v.x, v.y});
     goals.push_back({world_->gates[0].position.x, world_->gates[0].position.y});
@@ -134,16 +130,15 @@ void RRG::step(){
 
     // RRG connection radius:
     //     r_n = min( gamma * (log(n)/n)^(1/d), eta )
-    // where n = current node count, d = 2 (planar), eta = the fixed maximum
-    // steer step size (the radius never exceeds the longest edge the graph
-    // can create anyway), and gamma must exceed the theoretical minimum
+    // n = current node count, d = 2 (planar), eta = fixed maximum steer step size
+    // (radius never exceeds the longest edge the graph can create),
+    // and gamma must exceed the theoretical minimum
     //     gamma* = 2*(1+1/d)^(1/d) * (mu_free/zeta_d)^(1/d)
     // for the random geometric graph to be connected almost surely as
-    // n -> infinity (mu_free = Lebesgue measure of free space, zeta_d =
-    // volume of the unit ball in R^d, i.e. pi for d=2). mu_free is
-    // approximated by the map border polygon's area (ignoring obstacles):
-    // this OVER-estimates the true free-space measure, which only makes
-    // gamma/r_n larger than strictly required -- safe, never unsafe.
+    // n -> infinity (mu_free = measure of free space,
+    // zeta_d = volume of the unit ball in R^d, i.e. pi for d=2).
+    //mu_free is approximated by the map border polygon's area ignoring obstacles areas:
+    // (safe overestimation of the true free space measure that makes the radius larger than strictly required)
     const double eta = 1.0;  // must match steer()'s step_size below
     std::vector<comb::Vec2> borderPts;
     for(const auto& p : world_->borders.points) borderPts.push_back({p.x, p.y});
@@ -154,11 +149,10 @@ void RRG::step(){
         2.0 * std::pow(1.0 + 1.0 / d, 1.0 / d) * std::pow(mu_free / zeta_d, 1.0 / d);
     const double gamma_rrg = 1.5 * gamma_star;  // safety margin above the theoretical minimum
 
-    // Note: with a small eta (short steer steps) and a map this size, r_n
-    // below will be pinned at the eta cap for essentially the whole growth
-    // (the shrinking (log n/n)^(1/d) term only drops below eta once n is far
-    // larger than our node budgets) -- expected and still correct, it just
-    // means in our regime this behaves like a fixed-radius RRG with radius eta.
+    // Note: with a small eta and this map size, r_n
+    // will be pinned at the eta cap for the whole graph growth
+    // (the shrinking (log n/n)^(1/d) term only drops below eta when n is a lot larger than the used node budgets)
+    // It means in case it behaves like a fixed radius RRG with radius eta
     while(tree.size() < target_nodes){
         SamplePoint p;
         std::vector<std::size_t> pending;
@@ -188,8 +182,7 @@ void RRG::step(){
         adjacency_[newIdx].push_back({nearest, dNearest});
         adjacency_[nearest].push_back({newIdx, dNearest});
 
-        // The actual RRG step: connect the new node to every other existing
-        // node within the shrinking radius r_n and has collision free segment
+        // RRG step: connect the new node to other nodes within the radius r_n and has collision free segment
         //Makes it a graph instead of a tree
         const double n = std::max<double>(tree.size(), 2.0);
         const double r_n = std::min(gamma_rrg * std::pow(std::log(n) / n, 1.0 / d), eta);
@@ -289,9 +282,7 @@ void RRG::visualize(){
     }
     marker_pub_.publish(nodes);
 
-    // Render the FULL graph (adjacency_), not just parent-pointer edges --
-    // unlike RRT/RRT*'s visualize(), this actually shows every RRG
-    // connection, not a spanning-tree subset of it.
+    // Render the graph (adjacency_)
     visualization_msgs::Marker edges;
     edges.header.frame_id = "map";
     edges.header.stamp = ros::Time::now();
@@ -375,13 +366,6 @@ RoadmapGraph RRG::buildRoadmapGraph() const{
         g.nodes.push_back(n);
     }
 
-    // The edges were already built incrementally during step(): every
-    // insertion connects the new node to its nearest node AND to every other
-    // node within the shrinking connection radius r_n that has a
-    // collision-free line of sight. Nothing left to compute here -- just
-    // hand over the adjacency exactly as grown. No post-hoc densification
-    // pass needed (unlike RRT/RRT*), since this planner builds a properly
-    // connected graph natively.
     g.adjacency = adjacency_;
 
     return g;
