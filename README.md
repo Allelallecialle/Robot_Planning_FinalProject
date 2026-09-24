@@ -1,6 +1,6 @@
 # Target Rescue
 
-![alt text](https://github.com/Allelallecialle/Robot_Planning_Final/blob/main/image_for_readme.png?raw=true)
+![alt text](https://github.com/Allelallecialle/Robot_Planning_Final/blob/september-date/image_for_readme.png?raw=true)
 
 ## Environment Setup
 After installing the Docker environment following 
